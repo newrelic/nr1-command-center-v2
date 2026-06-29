@@ -1,461 +1,252 @@
-import React from 'react';
-import { navigation, NerdGraphQuery, Spinner, Toast, Tooltip } from 'nr1';
-import { Card, Icon, Input, Statistic, Tab, Table } from 'semantic-ui-react';
-import _ from 'lodash';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import PropTypes from 'prop-types';
+import { navigation, NerdGraphQuery, Spinner, Toast } from 'nr1';
+import { Input } from 'semantic-ui-react';
+import orderBy from 'lodash/orderBy';
+import sum from 'lodash/sum';
+
+import AnalyticsStats from './components/AnalyticsStats';
+import AnalyticsTable from './components/AnalyticsTable';
+import useDebouncedValue from './hooks/useDebouncedValue';
 
 const query = require('./utils');
 
-export default class Analytics extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      loading: true,
-      aggregateData: null,
-      tableData: [],
-      searchText: '',
-      selectedAccount: null,
-      dashboards: null,
-      column: null,
-      direction: null
+const TOOLTIP_BY_TITLE = {
+  'Issue Count':
+    'The total count of opened Issues across all accounts in the time window selected.',
+  'Issue Minutes (accumulated)':
+    'The total time Issues are open across all accounts in the time window selected.',
+  'Avg Issue MTTR (minutes)':
+    "The average time to resolve an Issue across all accounts. Calculated by summing MTTR for all accounts and dividing by the number of accounts in the time window selected. All accounts with 'n/a' are excluded.",
+  'Issues closed under 5min (%)':
+    "The average percentage of Issues closed equal to or under 5 minutes across all accounts. Calculated by summing all percentages and dividing by the number of accounts in the time window selected. All accounts with 'n/a' are excluded.",
+};
+
+const COL_MAP = {
+  Account: 'account',
+  'Account ID': 'id',
+  'Issue Count': 'issueCount',
+  'Issue Minutes (accumulated)': 'issueMin',
+  'Avg Issue MTTR (minutes)': 'issueMTTR',
+  '% Issues closed under 5min': 'issueUnder5',
+};
+
+function getTooltip(title) {
+  return TOOLTIP_BY_TITLE[title] || '';
+}
+
+async function fetchSingleDashboard(account, dashboardName) {
+  const res = await NerdGraphQuery.query({
+    query: query.dashboards(account.id, dashboardName),
+  });
+  if (res.error) {
+    console.debug(
+      `Failed to retrieve dashboard: ${dashboardName} within account: ${account.id}`
+    );
+    return { account: account.id, guid: null, name: null };
+  }
+  const entities = res.data.actor.entitySearch.results.entities;
+  if (entities.length > 0) {
+    return {
+      account: account.id,
+      guid: entities[0].guid,
+      name: entities[0].name,
     };
   }
+  return { account: account.id, guid: null, name: null };
+}
 
-  async componentDidMount() {
-    await this.getData();
-    await this.fetchDashboards();
-    await this.setState({ loading: false });
-  }
+async function fetchAccountMetrics(account, time) {
+  const [countRes, minRes, mttrRes, under5Res] = await Promise.all([
+    NerdGraphQuery.query({ query: query.issueCount(account.id, time) }),
+    NerdGraphQuery.query({ query: query.issueMinutes(account.id, time) }),
+    NerdGraphQuery.query({ query: query.issueMTTR(account.id, time) }),
+    NerdGraphQuery.query({ query: query.issueUnder5min(account.id, time) }),
+  ]);
 
-  async componentDidUpdate(prevProps) {
-    if (
-      prevProps.time !== this.props.time ||
-      prevProps.accounts.length !== this.props.accounts.length
-    ) {
-      await this.setState({ tableData: [], loading: true });
-      await this.getData();
-      await this.setState({ loading: false });
-    }
-  }
-
-  async fetchSingleDashboard(a) {
-    let { dashboard } = this.props;
-
-    const res = await NerdGraphQuery.query({ query: query.dashboards(a.id, dashboard) });
-
-    if (res.error) {
-      console.debug(`Failed to retrieve dashboard: ${dashboard} within account: ${a.id}`);
-    } else {
-      let dashboard = res.data.actor.entitySearch.results.entities;
-
-      if (dashboard.length > 0) {
-        dashboard = {
-          account: a.id,
-          guid: dashboard[0].guid,
-          name: dashboard[0].name
-        };
-      } else {
-        dashboard = { account: a.id, guid: null, name: null };
-      }
-      return dashboard;
-    }
-  }
-
-  async fetchDashboards() {
-    const { dashboards } = this.state;
-    const { accounts } = this.props;
-    const dashProms = [];
-
-    for (const acct of accounts) {
-      dashProms.push(this.fetchSingleDashboard(acct));
-    }
-
-    Promise.all(dashProms).then(dashResults => {
-      this.setState({ dashboards: dashResults });
-    });
-  }
-
-  async getIssueCount(a) {
-    const res = await NerdGraphQuery.query({
-      query: query.issueCount(a.id, this.props.time)
-    });
-
-    if (res.error) {
-      console.debug(`Failed to retrieve issue count for account: ${a.id}`);
-    } else {
-      const issueCount = res.data.actor.account.nrql.results[0].count;
-      return issueCount;
-    }
-  }
-
-  async getIssueMinutes(a) {
-    const res = await NerdGraphQuery.query({
-      query: query.issueMinutes(a.id, this.props.time)
-    });
-
-    if (res.error) {
-      console.debug(`Failed to retrieve issue minutes for account: ${a.id}`);
-    } else {
-      const issueMin = res.data.actor.account.nrql.results[0].minutes;
-      return issueMin;
-    }
-  }
-
-  async getIssueMTTR(a) {
-    const res = await NerdGraphQuery.query({
-      query: query.issueMTTR(a.id, this.props.time)
-    });
-
-    if (res.error) {
-      console.debug(`Failed to retrieve issue MTTR for account: ${a.id}`);
-    } else {
-      const issueMTTR = res.data.actor.account.nrql.results[0].avg;
-      return issueMTTR;
-    }
-  }
-
-  async getIssueUnder5(a) {
-    const res = await NerdGraphQuery.query({
-      query: query.issueUnder5min(a.id, this.props.time)
-    });
-
+  const pull = (res, field, label) => {
     if (res.error) {
       console.debug(
-        `Failed to retrieve issues under 5min for account: ${a.id}`
+        `Failed to retrieve ${label} for account: ${account.id}`,
+        res.error
       );
-    } else {
-      const issueUnder5 = res.data.actor.account.nrql.results[0].under5;
-      return issueUnder5;
+      return null;
     }
-  }
+    return res.data.actor.account.nrql.results[0]?.[field];
+  };
 
-  async getAnAccount(acct) {
-    return new Promise((resolve, reject) => {
-      const anAccountsData = [
-        this.getIssueCount(acct),
-        this.getIssueMinutes(acct),
-        this.getIssueMTTR(acct),
-        this.getIssueUnder5(acct)
-      ];
-      const all = [];
+  return {
+    account: account.name,
+    id: account.id,
+    issueCount: pull(countRes, 'count', 'issue count'),
+    issueMin: pull(minRes, 'minutes', 'issue minutes'),
+    issueMTTR: pull(mttrRes, 'avg', 'issue MTTR'),
+    issueUnder5: pull(under5Res, 'under5', 'issues under 5min'),
+  };
+}
 
-      Promise.all(anAccountsData).then(anAccount => {
-        const result = {
-          account: acct.name,
-          id: acct.id,
-          issueCount: anAccount[0],
-          issueMin: anAccount[1],
-          issueMTTR: anAccount[2],
-          issueUnder5: anAccount[3]
-        };
-        resolve(result);
+function computeAggregate(acctData) {
+  const totalIssues = acctData.flatMap((a) =>
+    a.issueCount > 0 ? [a.issueCount] : []
+  );
+  const totalIssueMins = acctData.flatMap((a) =>
+    a.issueCount > 0 ? [a.issueMin] : []
+  );
+  const totalMTTRs = acctData.flatMap((a) =>
+    a.issueMTTR !== null ? [a.issueMTTR] : []
+  );
+  const totalPercentUnder5s = acctData.flatMap((a) =>
+    a.issueUnder5 !== null ? [a.issueUnder5] : []
+  );
+
+  return {
+    'Issue Count': sum(totalIssues),
+    'Issue Minutes (accumulated)': sum(totalIssueMins),
+    'Avg Issue MTTR (minutes)': totalMTTRs.length
+      ? sum(totalMTTRs) / totalMTTRs.length
+      : 0,
+    'Issues closed under 5min (%)': totalPercentUnder5s.length
+      ? sum(totalPercentUnder5s) / totalPercentUnder5s.length
+      : 0,
+  };
+}
+
+export default function Analytics({ time, accounts, dashboard }) {
+  const [loading, setLoading] = useState(true);
+  const [aggregateData, setAggregateData] = useState(null);
+  const [tableData, setTableData] = useState([]);
+  const [searchText, setSearchText] = useState('');
+  const [dashboards, setDashboards] = useState(null);
+  const [sort, setSort] = useState({ column: null, direction: null });
+
+  const debouncedSearch = useDebouncedValue(searchText, 200);
+
+  const accountSignature = useMemo(
+    () =>
+      accounts
+        .map((a) => a.id)
+        .sort()
+        .join(','),
+    [accounts]
+  );
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setTableData([]);
+
+    const dashProms = accounts.map((a) => fetchSingleDashboard(a, dashboard));
+    const dataProms = accounts.map((a) => fetchAccountMetrics(a, time));
+
+    Promise.all([Promise.all(dataProms), Promise.all(dashProms)])
+      .then(([acctData, dashResults]) => {
+        if (!active) return;
+        setTableData(acctData);
+        setAggregateData(computeAggregate(acctData));
+        setDashboards(dashResults);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.debug('analytics fetch failed', err);
+        setLoading(false);
       });
+
+    return () => {
+      active = false;
+    };
+  }, [time, accountSignature, dashboard]); // eslint-disable-line
+
+  const handleSort = useCallback((clickedCol) => {
+    setSort((prev) => {
+      const nextDirection =
+        prev.column === clickedCol && prev.direction === 'ascending'
+          ? 'descending'
+          : 'ascending';
+      return { column: clickedCol, direction: nextDirection };
     });
-  }
+  }, []);
 
-  async getData() {
-    const { accounts } = this.props;
-    const proms = [];
-
-    for (const acct of accounts) {
-      proms.push(this.getAnAccount(acct));
-    }
-
-    Promise.all(proms).then(acctData => {
-      const totalIssues = acctData
-        .filter(a => a.issueCount > 0)
-        .map(c => c.issueCount);
-      const totalIssueCount = _.sum(totalIssues);
-
-      const totalIssueMins = acctData
-        .filter(a => a.issueCount > 0)
-        .map(c => c.issueMin);
-      const totalIssueMin = _.sum(totalIssueMins);
-
-      const totalMTTRs = acctData
-        .filter(a => a.issueMTTR !== null)
-        .map(c => c.issueMTTR);
-      const totalMTTR = _.sum(totalMTTRs);
-      const totalAvgMTTR = totalMTTR / totalMTTRs.length;
-
-      const totalPercentUnder5s = acctData
-        .filter(a => a.issueUnder5 !== null)
-        .map(c => c.issueUnder5);
-      const totalPercentUnder5 = _.sum(totalPercentUnder5s);
-      const totalAvgUnder5 = totalPercentUnder5 / totalPercentUnder5s.length;
-
-      const totalData = {
-        'Issue Count': totalIssueCount,
-        'Issue Minutes (accumulated)': totalIssueMin,
-        'Avg Issue MTTR (minutes)': totalAvgMTTR,
-        'Issues closed under 5min (%)': totalAvgUnder5
-      };
-
-      this.setState({ tableData: acctData, aggregateData: totalData });
-    });
-  }
-
-  getTooltip(title) {
-    let text = '';
-    switch (title) {
-      case 'Issue Count':
-        text =
-          'The total count of opened Issues across all accounts in the time window selected.';
-        break;
-      case 'Issue Minutes (accumulated)':
-        text =
-          'The total time Issues are open across all accounts in the time window selected.';
-        break;
-      case 'Avg Issue MTTR (minutes)':
-        text =
-          "The average time to resolve an Issue across all accounts. Calculated by summing MTTR for all accounts and dividing by the number of accounts in the time window selected. All accounts with 'n/a' are excluded.";
-        break;
-      case 'Issues closed under 5min (%)':
-        text =
-          "The average percentage of Issues closed equal to or under 5 minutes across all accounts. Calculated by summing all percentages and dividing by the number of accounts in the time window selected. All accounts with 'n/a' are excluded.";
-        break;
-    }
-
-    return text;
-  }
-
-  renderStats() {
-    const { aggregateData } = this.state;
-
-    return (
-      <Card.Group
-        style={{ textAlign: 'center', marginBottom: '10px' }}
-        itemsPerRow={4}
-      >
-        {Object.keys(aggregateData).map((dp, i) => {
-          return (
-            <Card key={i}>
-              <Card.Header textAlign="center">
-                <h3>
-                  <Tooltip
-                    text={this.getTooltip(dp)}
-                    placementType={Tooltip.PLACEMENT_TYPE.RIGHT}
-                  >
-                    <Icon name="help circle" />
-                  </Tooltip>
-                  {dp}
-                </h3>
-              </Card.Header>
-              <Card.Content>
-                <Statistic size="mini">
-                  <Statistic.Value>
-                    {dp.includes('%')
-                      ? aggregateData[dp].toFixed(2)
-                      : Math.round(aggregateData[dp])}
-                  </Statistic.Value>
-                </Statistic>
-              </Card.Content>
-            </Card>
-          );
-        })}
-      </Card.Group>
+  const sortedRows = useMemo(() => {
+    if (!sort.column) return tableData;
+    const field = COL_MAP[sort.column];
+    if (!field) return tableData;
+    return orderBy(
+      tableData,
+      [field],
+      [sort.direction === 'ascending' ? 'asc' : 'desc']
     );
-  }
+  }, [tableData, sort]);
 
-  handleSort(clickedCol) {
-    const { column, direction, tableData } = this.state;
-    let translated = null;
-    let newTableData = tableData;
-
-    switch (clickedCol) {
-      case 'Account':
-        translated = 'account';
-        break;
-      case 'Account ID':
-        translated = 'id';
-        break;
-      case 'Issue Count':
-        translated = 'issueCount';
-        break;
-      case 'Issue Minutes (accumulated)':
-        translated = 'issueMin';
-        break;
-      case 'Avg Issue MTTR (minutes)':
-        translated = 'issueMTTR';
-        break;
-      case 'Issues closed under 5min (%)':
-        translated = 'issueUnder5';
-        break;
-    }
-
-    newTableData = _.orderBy(
-      newTableData,
-      [translated],
-      [
-        direction === 'ascending' ? 'asc' : 'desc',
-        direction === 'ascending' ? 'desc' : 'asc'
-      ]
+  const filteredRows = useMemo(() => {
+    const needle = debouncedSearch.toLowerCase();
+    if (!needle) return sortedRows;
+    return sortedRows.filter(
+      (row) =>
+        row.account.toLowerCase().includes(needle) ||
+        row.id.toString().includes(needle)
     );
+  }, [sortedRows, debouncedSearch]);
 
-    this.setState({
-      column: clickedCol,
-      tableData: newTableData,
-      direction: direction === 'ascending' ? 'descending' : 'ascending'
-    });
-  }
+  const openDrilldown = useCallback(
+    (r) => {
+      const selectedDash =
+        dashboards && dashboards.find((d) => d.account === r.id);
+      if (!selectedDash || selectedDash.guid == null) {
+        Toast.showToast({
+          title: 'Drilldown dashboard not found.',
+          description: `Please validate dashboard: ${dashboard} exists in account: ${r.id}`,
+          type: Toast.TYPE.CRITICAL,
+        });
+        return;
+      }
+      navigation.openStackedNerdlet({
+        id: 'dashboards.detail',
+        urlState: {
+          entityGuid: selectedDash.guid,
+          useDefaultTimeRange: false,
+        },
+      });
+    },
+    [dashboards, dashboard]
+  );
 
-  renderTable() {
-    const { searchText, tableData, column, direction } = this.state;
-
-    const tableHeaders = [
-      'Account',
-      'Account ID',
-      'Issue Count',
-      'Issue Minutes (accumulated)',
-      'Avg Issue MTTR (minutes)',
-      '% Issues closed under 5min'
-    ];
-
+  if (loading || tableData.length === 0) {
     return (
-      <div
-        style={{
-          overflowY: 'scroll',
-          display: tableData.length === 0 || tableData == null ? 'none' : 'flex'
-        }}
-      >
-        <Table compact selectable sortable celled>
-          <Table.Header class="sorted ascending">
-            <Table.Row>
-              {tableHeaders.map((header, k) => {
-                return (
-                  <Table.HeaderCell
-                    sorted={column === header ? direction : undefined}
-                    onClick={() => this.handleSort(header)}
-                    key={k}
-                  >
-                    {header}
-                  </Table.HeaderCell>
-                );
-              })}
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
-            {tableData
-              .filter(row => {
-                return (
-                  row.account
-                    .toLowerCase()
-                    .includes(searchText.toLowerCase()) ||
-                  row.id.toString().includes(searchText.toLowerCase())
-                );
-              })
-              .map((row, p) => {
-                return (
-                  <Table.Row key={p}>
-                    <Table.Cell onClick={() => this.openDrilldown(row)}>
-                      <a>{row.account}</a>
-                    </Table.Cell>
-                    <Table.Cell>{row.id}</Table.Cell>
-                    <Table.Cell>{row.issueCount}</Table.Cell>
-                    <Table.Cell>{Math.round(row.issueMin)}</Table.Cell>
-                    <Table.Cell>
-                      {row.issueMTTR == null
-                        ? 'n/a'
-                        : Math.round(row.issueMTTR)}
-                    </Table.Cell>
-                    <Table.Cell>
-                      {row.issueUnder5 == null
-                        ? 'n/a'
-                        : row.issueUnder5.toFixed(2)}
-                    </Table.Cell>
-                  </Table.Row>
-                );
-              })}
-          </Table.Body>
-        </Table>
+      <div style={{ textAlign: 'center' }}>
+        <h4>Loading</h4>
+        <Spinner type={Spinner.TYPE.DOT} />
       </div>
     );
   }
 
-  openDrilldown(r) {
-    const { dashboards } = this.state;
-    const { dashboard } = this.props;
-    const selectedDash = dashboards.filter(d => d.account == r.id);
-
-    if (selectedDash[0].guid == null) {
-      Toast.showToast({
-        title: 'Drilldown dashboard not found.',
-        description: `Please validate dashboard: ${dashboard} exists in account: ${r.id}`,
-        type: Toast.TYPE.CRITICAL
-      });
-    } else {
-      navigation.openStackedNerdlet({
-        id: 'dashboards.detail',
-        urlState: {
-          entityGuid: selectedDash[0].guid,
-          useDefaultTimeRange: false
-        }
-      });
-    }
-  }
-
-  render() {
-    const { loading, tableData, aggregateData, selectedAccount } = this.state;
-
-    // const panes = [
-    //   {
-    //     menuItem: 'Issues',
-    //     render: () => (
-    //       <Tab.Pane>
-    //         <>
-    //           {aggregateData == null
-    //             ? 'Failed to fetch summary data'
-    //             : this.renderStats()}
-    //           <Input
-    //             style={{ marginBottom: '3px' }}
-    //             icon="search"
-    //             placeholder="Search Accounts..."
-    //             onChange={e => this.setState({ searchText: e.target.value })}
-    //           />
-    //           &nbsp;&nbsp;&nbsp;
-    //           {tableData.length == 0
-    //             ? 'Failed to fetch account data'
-    //             : this.renderTable()}
-    //           {selectedAccount !== null ? this.renderDrilldown() : ''}
-    //         </>
-    //       </Tab.Pane>
-    //     )
-    //   },
-    //   {
-    //     menuItem: 'Notifications',
-    //     render: () => (
-    //       <Tab.Pane>
-    //         <h1>placeholder</h1>
-    //       </Tab.Pane>
-    //     )
-    //   }
-    // ]
-
-    if (loading || tableData.length == 0) {
-      return (
-        <div style={{ textAlign: 'center' }}>
-          <h4>Loading</h4>
-          <Spinner type={Spinner.TYPE.DOT} />
-        </div>
-      );
-    } else {
-      return (
-        <>
-          {aggregateData == null
-            ? 'Failed to fetch summary data'
-            : this.renderStats()}
-          <Input
-            style={{ marginBottom: '3px' }}
-            icon="search"
-            placeholder="Search Accounts..."
-            onChange={e => this.setState({ searchText: e.target.value })}
-          />
-          &nbsp;&nbsp;&nbsp;
-          {tableData.length == 0
-            ? 'Failed to fetch account data'
-            : this.renderTable()}
-          {selectedAccount !== null ? this.renderDrilldown() : ''}
-        </>
-      );
-    }
-  }
+  return (
+    <>
+      {aggregateData == null ? (
+        'Failed to fetch summary data'
+      ) : (
+        <AnalyticsStats aggregateData={aggregateData} getTooltip={getTooltip} />
+      )}
+      <Input
+        style={{ marginBottom: '3px' }}
+        icon="search"
+        placeholder="Search Accounts..."
+        onChange={(e) => setSearchText(e.target.value)}
+      />
+      &nbsp;&nbsp;&nbsp;
+      <AnalyticsTable
+        rows={filteredRows}
+        column={sort.column}
+        direction={sort.direction}
+        onSort={handleSort}
+        onOpenDrilldown={openDrilldown}
+      />
+    </>
+  );
 }
+
+Analytics.propTypes = {
+  time: PropTypes.string.isRequired,
+  accounts: PropTypes.array.isRequired,
+  dashboard: PropTypes.string,
+};

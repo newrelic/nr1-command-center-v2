@@ -1,563 +1,382 @@
-import React from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import PropTypes from 'prop-types';
 import {
-  AccountStorageMutation,
-  AccountStorageQuery,
   Button,
-  HeadingText,
-  Modal,
   NerdGraphMutation,
   NerdGraphQuery,
   Spinner,
-  TextField,
   Toast,
-  Tooltip,
-  UserQuery
+  UserQuery,
 } from 'nr1';
-import { Input, Table } from 'semantic-ui-react';
+import { Input } from 'semantic-ui-react';
 import moment from 'moment';
-import _ from 'lodash';
+import orderBy from 'lodash/orderBy';
 import csvDownload from 'json-to-csv-export';
+
 import config from './config.json';
+import IssuesTable from './components/IssuesTable';
+import LinkModal from './components/LinkModal';
+import ConfirmModal from './components/ConfirmModal';
+import EntitiesModal from './components/EntitiesModal';
+import useCurrentUser from './hooks/useCurrentUser';
+import useDebouncedValue from './hooks/useDebouncedValue';
+import useInterval from './hooks/useInterval';
+import useNerdStoreCollection from './hooks/useNerdStoreCollection';
 
 const query = require('./utils');
 
-export default class OpenIssues extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      openLoading: true,
-      tableData: [],
-      filteredTableData: [],
-      // slicedTableData: [],
-      exportableData: [],
-      fullExportableData: [],
-      searchText: '',
-      column: null,
-      direction: null,
-      // activePage: 1,
-      // begin: 0,
-      // end: 25,
-      linkModalHidden: true,
-      linkText: null,
-      displayText: null,
-      rowAccountId: null,
-      rowIssueId: null,
-      closeModalHidden: true,
-      ackModalHidden: true,
-      issueToAck: null,
-      issueToClose: null,
-      ackUser: null,
-      currentTime: null
-    };
-  }
+const COL_MAP = {
+  ID: 'issueId',
+  Account: 'accountName',
+  '# Entities': (row) => (row.relatedEntityId ? row.relatedEntityId.length : 0),
+  Title: 'name',
+  '# Alert Events': 'incidentCount',
+  Priority: 'priority',
+  'Opened At': 'activatedAt',
+  Duration: 'duration',
+  Muted: 'mutingState',
+};
 
-  async componentDidMount() {
-    await this.getTableData();
-    this.interval = setInterval(() => this.getTableData(), config.refreshRate);
-  }
+const NUMERIC_TAG_KEYS = new Set([
+  'activatedAt',
+  'accountId',
+  'incidentCount',
+  'policyId',
+  'conditionId',
+]);
+const ARRAY_TAG_KEYS = new Set(['relatedEntityName', 'relatedEntityId']);
 
-  componentWillUnmount() {
-    clearInterval(this.interval);
-  }
-
-  async componentDidUpdate(prevProps) {
-    if (prevProps.time !== this.props.time) {
-      await this.setState({ filteredTableData: [], openLoading: true });
-      await this.getTableData();
-    }
-
-    if (prevProps.accounts.length !== this.props.accounts.length) {
-      let tableCopy = this.state.tableData;
-      let filteredTable = [];
-
-      for (var s=0; s<tableCopy.length; s++) {
-        for (var p=0; p<this.props.accounts.length; p++) {
-          if (tableCopy[s].accountId == this.props.accounts[p].id) {
-            filteredTable.push(tableCopy[s]);
-          }
-        }
-      }
-      await this.setState({ filteredTableData: filteredTable, openLoading: true });
-    }
-  }
-
-  async getCurrentUser() {
-    const data = await UserQuery.query();
-    return data.data;
-  }
-
-
-  async getTableData() {
-    const { accounts, rawTime } = this.props;
-    const issueProms = [];
-    const currTime = new moment().format('LT');
-    const exportable = [];
-    let table = [];
-    // let end = null;
-    // let start = null;
-    let cursor = null;
-    // let allIssues = [];
-
-    // if (rawTime.durationMs) {
-    //   end = Date.now();
-    //   start = end - rawTime.durationMs;
-    // }
-    //
-    // if (rawTime.startTime) {
-    //   end = rawTime.endTime;
-    //   start = rawTime.startTime;
-    // }
-
-    const links = await this.loadLinksFromNerdStore();
-    const acks = await this.loadAcksFromNerdStore();
-
-    for (const acct of accounts) {
-      let allIssues = [];
-      issueProms.push(this.getIssues(acct, allIssues, cursor));
-    }
-
-    Promise.all(issueProms).then(async issues => {
-      let entities = "";
-      for (let k=0; k < issues.length; k++) {
-        entities = "";
-        if (issues[k].issues.length > 0) {
-          for (let i=0; i < issues[k].issues.length; i++) {
-            issues[k].issues[i].accountName = issues[k].account;
-
-            let now = moment();
-            let activatedObj = issues[k].issues[i].tags.find(i => i.key == 'activatedAt');
-            let activated = Number(activatedObj['values'][0])/1000;
-            let momentActivated = moment.unix(activated);
-            let duration = moment.duration(now.diff(momentActivated));
-            issues[k].issues[i].duration = duration;
-
-            let tags = issues[k].issues[i].tags;
-            for (var t=0; t < tags.length; t++) {
-              let key = tags[t].key;
-
-              if (key == 'activatedAt' || key == 'accountId' || key == 'incidentCount' || key == 'policyId' || key == 'conditionId') {
-                issues[k].issues[i][key] = Number(tags[t].values[0]);
-              } else if (key == 'relatedEntityName') {
-                issues[k].issues[i][key] = tags[t].values;
-              } else {
-                issues[k].issues[i][key] = tags[t].values[0];
-              }
-            }
-
-            if (typeof issues[k].issues[i].relatedEntityName !== "undefined" && issues[k].issues[i].relatedEntityName !== null) {
-              entities = issues[k].issues[i].relatedEntityName.toString();
-            }
-
-            const oneExportableResult = {
-              Account: issues[k].account,
-              Title: issues[k].issues[i].name,
-              IncidentCount: issues[k].issues[i].incidentCount,
-              Entities: entities,
-              Priority: issues[k].issues[i].priority,
-              Muted: issues[k].issues[i].mutingState,
-              'Opened At': moment.unix(activated).format(
-                'MM/DD/YYYY, h:mm a'
-              )
-            };
-
-            let noteDisplay = null;
-            let noteLink = null;
-            let ackUser = null;
-            if (links.length > 0) {
-              for (let p = 0; p < links.length; p++) {
-                if (issues[k].issues[i].issueId == links[p].id) {
-                  noteDisplay = links[p].document.displayText;
-                  noteLink = links[p].document.linkText;
-                  break;
-                }
-              }
-            }
-
-            if (issues[k].issues[i].acknowledgedBy == null) {
-              if (acks.length > 0) {
-                for (let a = 0; a < acks.length; a++) {
-                  if (issues[k].issues[i].issueId == acks[a].id) {
-                    ackUser = acks[a].document.user;
-                    break;
-                  }
-                }
-              }
-            } else {
-              const userName = await this.getCurrentUserById(issues[k].issues[i].acknowledgedBy);
-              ackUser = userName;
-            }
-
-            issues[k].issues[i].display = noteDisplay;
-            issues[k].issues[i].link = noteLink;
-            issues[k].issues[i].ackUser = ackUser;
-            oneExportableResult.Link = noteLink;
-            exportable.push(oneExportableResult);
-            table.push(issues[k].issues[i]);
-          } //inner for
-        } //if
-      } //outer for
-
-      const sortedTable = _.orderBy(table, ['activatedAt'], ['desc']);
-
-      this.setState(
-        {
-          tableData: sortedTable,
-          filteredTableData: sortedTable,
-          exportableData: exportable,
-          fullExportableData: exportable,
-          currentTime: currTime
-        },
-        () => {
-          this.removeOldLinks(links);
-          this.removeOldAcks(acks);
-          this.setState({ openLoading: false });
-        }
-      );
-      //   this.setState({tableData: formattedTable }, () => {
-      //     this.setState({slicedTableData: this.state.tableData.slice(this.state.start, this.state.end)})
-      //   })
-      // });
-    });
-  }
-
-  async getCurrentUserById(id) {
-    const res = await NerdGraphQuery.query({
-      query: query.userName(id)
-    });
-    if (res.error) {
-      console.debug(`Failed to retrieve user for ID: ${id}`);
-      console.debug(res.error);
-      return 'Unknown User';
+function applyTagsToIssue(issue) {
+  for (const tag of issue.tags) {
+    const { key } = tag;
+    if (NUMERIC_TAG_KEYS.has(key)) {
+      issue[key] = Number(tag.values[0]);
+    } else if (ARRAY_TAG_KEYS.has(key)) {
+      issue[key] = tag.values;
     } else {
-      const user = res.data.actor.users.userSearch.users[0];
-      return user ? user.name : 'Unknown User';
+      issue[key] = tag.values[0];
     }
   }
+}
 
-  async getIssues(acct, allIssues, c) {
+async function fetchAllIssuesForAccount(acct) {
+  let cursor = null;
+  let collected = [];
+  do {
     const res = await NerdGraphQuery.query({
-      query: query.openIssues(acct.id, c)
+      query: query.openIssues(acct.id, cursor),
     });
-
     if (res.error) {
       console.debug(`Failed to retrieve open issues for: ${acct.id}`);
       console.debug(res.error);
-      const oneAccount = { account: acct.name, id: acct.id, issues: [] };
-      return oneAccount;
-    } else {
-      let nextCursor = res.data.actor.entitySearch.results.nextCursor;
-      let issues = res.data.actor.entitySearch.results.entities;
-
-      if (nextCursor == null) {
-        allIssues = allIssues.concat(issues);
-        const oneAccount = {
-          account: acct.name,
-          id: acct.id,
-          issues: allIssues
-        };
-
-        return oneAccount;
-      } else {
-        allIssues = allIssues.concat(issues);
-        return this.getIssues(acct, allIssues, nextCursor)
-      }
+      return { account: acct.name, id: acct.id, issues: [] };
     }
-  }
+    collected = collected.concat(res.data.actor.entitySearch.results.entities);
+    cursor = res.data.actor.entitySearch.results.nextCursor;
+  } while (cursor != null);
+  return { account: acct.name, id: acct.id, issues: collected };
+}
 
-  getWidth(h) {
-    switch (h) {
-      case 'ID':
-        return 2;
-        break;
-      case 'Account':
-        return 2;
-        break;
-      case 'Title':
-        return 6;
-        break;
-      case 'IncidentCount':
-        return 1;
-        break;
-      case 'Entities':
-        return 4;
-        break;
-      case 'Priority':
-        return 1;
-        break;
-      case 'Entities':
-        return 3;
-        break;
-      case 'Links':
-        return 4;
-        break;
-      default:
-        return 2;
-        break;
+function validateLinkInput(displayText, linkText) {
+  if (displayText == null || displayText === '') return 'empty';
+  if (linkText == null || linkText === '') return 'empty';
+  try {
+    const parsed = new URL(linkText);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return 'scheme';
     }
+  } catch {
+    return 'scheme';
   }
+  return null;
+}
 
-  handleSort(clickedCol) {
-    const {
-      column,
-      direction,
-      filteredTableData,
-      tableData,
-      slicedTableData
-    } = this.state;
-    let translated = null;
-    let newTableData = filteredTableData;
+function buildBaseUrl() {
+  const here = window.location.href;
+  return here.includes('one.eu')
+    ? 'https://radar-api.service.eu.newrelic.com'
+    : 'https://radar-api.service.newrelic.com';
+}
 
-    switch (clickedCol) {
-      case 'ID':
-        translated = 'issueId';
-        break;
-      case 'Account':
-        translated = 'accountName';
-        break;
-      case 'Entities':
-        translated = 'entityNames';
-        break;
-      case 'Title':
-        translated = 'title';
-        break;
-      case "IncidentCount":
-        translated = 'totalIncidents';
-        break;
-      case 'Priority':
-        translated = 'priority';
-        break;
-      case 'Opened At':
-        translated = 'activatedAt';
-        break;
-      case 'Duration':
-        translated = 'duration';
-        break;
-      case 'Muted':
-        translated = 'mutingState';
-        break;
-    }
+export default function OpenIssues({ accounts, nerdStoreAccount }) {
+  const [openLoading, setOpenLoading] = useState(true);
+  const [tableData, setTableData] = useState([]);
+  const [currentTime, setCurrentTime] = useState(null);
+  const [searchText, setSearchText] = useState('');
+  const [sort, setSort] = useState({ column: null, direction: null });
 
-    newTableData = _.orderBy(
-      newTableData,
-      [translated],
-      [
-        direction === 'ascending' ? 'asc' : 'desc',
-        direction === 'ascending' ? 'desc' : 'asc'
-      ]
-    );
+  const [linkModal, setLinkModal] = useState({
+    hidden: true,
+    rowIssueId: null,
+  });
+  const [displayText, setDisplayText] = useState('');
+  const [linkText, setLinkText] = useState('');
 
-    this.setState({
-      column: clickedCol,
-      filteredTableData: newTableData,
-      direction: direction === 'ascending' ? 'descending' : 'ascending'
-    });
-    // }, () => {
-    //   this.setState({
-    //     slicedTableData: this.state.tableData.slice(this.state.start, this.state.end)
-    //   })
-  }
+  const [ackModal, setAckModal] = useState({
+    hidden: true,
+    issueToAck: null,
+    rowAccountId: null,
+  });
 
-  // async onPaginationChange(activePage) {
-  //   await this.setState({ activePage });
-  //   await this.setState({ begin: this.state.activePage * 25 - 25});
-  //   await this.setState({ end: this.state.activePage * 25});
-  //
-  //   this.setState({
-  //     slicedTableData: this.state.tableData.slice(this.state.begin, this.state.end)
-  //   })
-  // }
+  const [closeModal, setCloseModal] = useState({
+    hidden: true,
+    issueToClose: null,
+    rowAccountId: null,
+  });
 
-  // <Table.Footer>
-  //   <Table.Row>
-  //     <Table.HeaderCell colSpan="8">
-  //       <Pagination
-  //         activePage={activePage}
-  //         onPageChange={(e, { activePage }) => this.onPaginationChange(activePage)}
-  //         totalPages={totalPages}
-  //       />
-  //     </Table.HeaderCell>
-  //   </Table.Row>
-  // </Table.Footer>
+  const [entityModal, setEntityModal] = useState({
+    hidden: true,
+    loading: false,
+    entities: [],
+  });
 
-  openLinkModal(row) {
-    this.setState({
-      linkModalHidden: false,
-      rowAccountId: row.accountId,
-      rowIssueId: row.issueId
-    });
-  }
+  const debouncedSearch = useDebouncedValue(searchText, 200);
+  const linksStore = useNerdStoreCollection(nerdStoreAccount, 'IssueLinks');
+  const acksStore = useNerdStoreCollection(nerdStoreAccount, 'IssueAcksV2');
+  const { fetchUserName } = useCurrentUser();
 
-  _onCloseLinkModal() {
-    this.setState({
-      linkModalHidden: true,
-      displayText: '',
-      linkText: ''
-    });
-  }
+  const baseUrl = useMemo(() => buildBaseUrl(), []);
+  const tableExportableRef = useRef([]);
 
-  validateLinkInput(disT, linkT) {
-    if (disT == null || disT == undefined || disT == '') {
-      return true;
-    }
+  const accountSignature = useMemo(
+    () =>
+      accounts
+        .map((a) => a.id)
+        .sort()
+        .join(','),
+    [accounts]
+  );
 
-    if (linkT == null || linkT == undefined || linkT == '') {
-      return true;
-    }
-
-    return false;
-  }
-
-  resetFormFields() {
-    this.setState({
-      displayText: '',
-      linkText: ''
-    });
-  }
-
-  updateLinkCell(d, l, iKey) {
-    const currentIndex = this.state.tableData.findIndex(
-      issue => issue.issueId === iKey
-    );
-    const tableCopy = [...this.state.tableData];
-    tableCopy[currentIndex].display = d;
-    tableCopy[currentIndex].link = l;
-  }
-
-  async saveLinkToNerdStore() {
-    const display = this.state.displayText;
-    const link = this.state.linkText;
-    const docKey = this.state.rowIssueId.toString();
-
-    const hasErrors = await this.validateLinkInput(display, link);
-
-    if (hasErrors) {
-      Toast.showToast({
-        title: 'Input Validation Error! Please review input.',
-        type: Toast.TYPE.CRITICAL
-      });
-    } else {
-      this.updateLinkCell(display, link, docKey); // live update (alleviates having to refresh to pull from nerdstore)
-      this.setState(
-        {
-          linkModalHidden: true
-        },
-        () => {
-          AccountStorageMutation.mutate({
-            accountId: this.props.nerdStoreAccount, // store links to account that the nerdpack is published to. must have access to this account to view links.
-            actionType: AccountStorageMutation.ACTION_TYPE.WRITE_DOCUMENT,
-            collection: 'IssueLinks',
-            documentId: docKey,
-            document: {
-              displayText: display,
-              linkText: link
-            }
-          })
-            .then(data => {
-              Toast.showToast({
-                title: 'Issue Link Saved!',
-                type: Toast.TYPE.Normal
-              });
-              this.resetFormFields();
-            })
-            .catch(error => {
-              console.debug(error);
-              Toast.showToast({
-                title: error.message,
-                type: Toast.TYPE.CRITICAL
-              });
-            });
-        }
-      );
-    }
-  }
-
-  async loadLinksFromNerdStore() {
+  const getTableData = useCallback(async () => {
+    const currTime = moment().format('LT');
     try {
-      const { data } = await AccountStorageQuery.query({
-        accountId: this.props.nerdStoreAccount,
-        collection: 'IssueLinks',
-        fetchPolicyType: AccountStorageQuery.FETCH_POLICY_TYPE.CACHE_FIRST
-      });
-      return data || [];
-    } catch (error) {
-      console.debug(error);
-      return [];
-    }
-  }
+      const [storedLinks, storedAcks, perAccount] = await Promise.all([
+        linksStore.load(),
+        acksStore.load(),
+        Promise.all(accounts.map((acct) => fetchAllIssuesForAccount(acct))),
+      ]);
 
-  removeOldLinks(linksFromNerdStore) {
-    const loadedData = this.state.tableData;
-
-    linksFromNerdStore.forEach(lnk => {
-      const index = loadedData.findIndex(
-        i => i.issueId == lnk.id
-      );
-      if (index === -1) {
-        this.deleteLinkFromNerdStore(lnk.id);
+      // First pass: collect distinct system-ack user IDs
+      const distinctAckIds = new Set();
+      for (const acctData of perAccount) {
+        for (const issue of acctData.issues) {
+          if (issue.acknowledgedBy) distinctAckIds.add(issue.acknowledgedBy);
+        }
       }
-    });
-  }
+      // Resolve them in one batch (the cache inside useCurrentUser dedupes future hits too)
+      await Promise.all(
+        Array.from(distinctAckIds).map((id) => fetchUserName(id))
+      );
 
-  deleteLinkFromNerdStore(docId) {
-    AccountStorageMutation.mutate({
-      accountId: this.props.nerdStoreAccount,
-      actionType: AccountStorageMutation.ACTION_TYPE.DELETE_DOCUMENT,
-      collection: 'IssueLinks',
-      documentId: docId
-    });
-  }
+      const flatTable = [];
+      const exportable = [];
+      const now = moment();
 
-  openAckModal(row) {
-    this.setState({
-      ackModalHidden: false,
+      for (const acctData of perAccount) {
+        for (const issue of acctData.issues) {
+          issue.accountName = acctData.account;
+          applyTagsToIssue(issue);
+
+          const activatedSec = Number(issue.activatedAt) / 1000;
+          issue.duration = moment.duration(now.diff(moment.unix(activatedSec)));
+
+          const entities =
+            issue.relatedEntityName != null
+              ? issue.relatedEntityName.toString()
+              : '';
+
+          const matchedLink = storedLinks.find(
+            (lnk) => String(issue.issueId) === String(lnk.id)
+          );
+          issue.display = matchedLink?.document?.displayText ?? null;
+          issue.link = matchedLink?.document?.linkText ?? null;
+
+          if (issue.acknowledgedBy) {
+            issue.ackUser = (await fetchUserName(issue.acknowledgedBy)) || null;
+          } else {
+            const matchedAck = storedAcks.find(
+              (ack) => String(issue.issueId) === String(ack.id)
+            );
+            issue.ackUser = matchedAck?.document?.user ?? null;
+          }
+
+          flatTable.push(issue);
+          exportable.push({
+            Account: acctData.account,
+            Title: issue.name,
+            IncidentCount: issue.incidentCount,
+            Entities: entities,
+            Priority: issue.priority,
+            Muted: issue.mutingState,
+            'Opened At': moment.unix(activatedSec).format('MM/DD/YYYY, h:mm a'),
+            Link: issue.link,
+          });
+        }
+      }
+
+      const sortedTable = orderBy(flatTable, ['activatedAt'], ['desc']);
+      setTableData(sortedTable);
+      setCurrentTime(currTime);
+      setOpenLoading(false);
+
+      // Prune stale NerdStore entries
+      const idSet = new Set(sortedTable.map((r) => String(r.issueId)));
+      for (const lnk of storedLinks) {
+        if (!idSet.has(String(lnk.id))) {
+          linksStore.remove(lnk.id).catch((err) => console.debug(err));
+        }
+      }
+      for (const ack of storedAcks) {
+        if (!idSet.has(String(ack.id))) {
+          acksStore.remove(ack.id).catch((err) => console.debug(err));
+        }
+      }
+
+      // Capture exportable on the table data via closure for CSV consumer
+      tableExportableRef.current = exportable;
+    } catch (err) {
+      console.debug('open-issues fetch failed', err);
+      setOpenLoading(false);
+    }
+  }, [accounts, linksStore, acksStore, fetchUserName]);
+
+  useEffect(() => {
+    setOpenLoading(true);
+    setTableData([]);
+    getTableData();
+    // eslint-disable-next-line
+  }, [accountSignature]);
+
+  useInterval(getTableData, config.refreshRate);
+
+  const handleSort = useCallback((clickedCol) => {
+    setSort((prev) => ({
+      column: clickedCol,
+      direction:
+        prev.column === clickedCol && prev.direction === 'ascending'
+          ? 'descending'
+          : 'ascending',
+    }));
+  }, []);
+
+  const sortedRows = useMemo(() => {
+    if (!sort.column) return tableData;
+    const accessor = COL_MAP[sort.column];
+    if (!accessor) return tableData;
+    return orderBy(
+      tableData,
+      [accessor],
+      [sort.direction === 'ascending' ? 'asc' : 'desc']
+    );
+  }, [tableData, sort]);
+
+  const filteredRows = useMemo(() => {
+    const needle = debouncedSearch.toLowerCase();
+    if (!needle) return sortedRows;
+    return sortedRows.filter(
+      (row) =>
+        row.accountName.toLowerCase().includes(needle) ||
+        row.priority.toLowerCase().includes(needle) ||
+        row.name.toLowerCase().includes(needle) ||
+        (row.mutingState || '').toLowerCase().includes(needle) ||
+        (row.relatedEntityName ?? '').toString().toLowerCase().includes(needle)
+    );
+  }, [sortedRows, debouncedSearch]);
+
+  const exportableRows = useMemo(() => {
+    const needle = debouncedSearch.toLowerCase();
+    const all = tableExportableRef.current;
+    if (!needle) return all;
+    return all.filter(
+      (row) =>
+        row.Account.toLowerCase().includes(needle) ||
+        row.Title.toLowerCase().includes(needle) ||
+        (row.Priority || '').toLowerCase().includes(needle) ||
+        (row.Muted || '').toLowerCase().includes(needle) ||
+        (row.Entities || '').toLowerCase().includes(needle)
+    );
+    // depend on tableData so the memo re-runs whenever the underlying ref is updated
+  }, [debouncedSearch, tableData]);
+
+  const openLinkModal = useCallback((row) => {
+    setLinkModal({ hidden: false, rowIssueId: row.issueId });
+  }, []);
+
+  const closeLinkModal = useCallback(() => {
+    setLinkModal({ hidden: true, rowIssueId: null });
+    setDisplayText('');
+    setLinkText('');
+  }, []);
+
+  const saveLink = useCallback(async () => {
+    const reason = validateLinkInput(displayText, linkText);
+    if (reason) {
+      Toast.showToast({
+        title:
+          reason === 'scheme'
+            ? 'Link must be a valid http(s) URL.'
+            : 'Input Validation Error! Please review input.',
+        type: Toast.TYPE.CRITICAL,
+      });
+      return;
+    }
+    const docKey = String(linkModal.rowIssueId);
+    setTableData((prev) =>
+      prev.map((row) =>
+        String(row.issueId) === docKey
+          ? { ...row, display: displayText, link: linkText }
+          : row
+      )
+    );
+    setLinkModal({ hidden: true, rowIssueId: null });
+    try {
+      await linksStore.write(docKey, { displayText, linkText });
+      Toast.showToast({ title: 'Issue Link Saved!', type: Toast.TYPE.NORMAL });
+      setDisplayText('');
+      setLinkText('');
+    } catch (err) {
+      console.debug(err);
+      Toast.showToast({ title: err.message, type: Toast.TYPE.CRITICAL });
+    }
+  }, [displayText, linkText, linkModal.rowIssueId, linksStore]);
+
+  const openAckModal = useCallback((row) => {
+    setAckModal({
+      hidden: false,
       issueToAck: row.issueId,
       rowAccountId: row.accountId,
-      ackUser: row.ackUser
     });
-  }
+  }, []);
 
-  _onCloseAckModal() {
-    this.setState({
-      ackModalHidden: true,
-      issueToAck: null,
-      rowAccountId: null,
-      ackUser: null
-    });
-  }
+  const cancelAckModal = useCallback(() => {
+    setAckModal({ hidden: true, issueToAck: null, rowAccountId: null });
+  }, []);
 
-  updateAckCell(issueId, user) {
-    const currentTableIndex = this.state.tableData.findIndex(
-      issue => issue.issueId === issueId
-    );
+  const ackIssue = useCallback(async () => {
+    const { issueToAck, rowAccountId } = ackModal;
+    if (issueToAck == null) return;
+    let currentUserData;
+    try {
+      currentUserData = await UserQuery.query();
+    } catch (err) {
+      console.debug(err);
+      Toast.showToast({
+        title: 'Failed to fetch current user.',
+        type: Toast.TYPE.CRITICAL,
+      });
+      return;
+    }
+    const userName = currentUserData?.data?.name;
 
-    const currentFilteredIndex = this.state.filteredTableData.findIndex(
-      i => i.issueId === issueId
-    );
-
-    const tableCopy = [...this.state.tableData];
-    const filteredCopy = [...this.state.filteredTableData];
-
-    filteredCopy[currentFilteredIndex].ackUser = user;
-    tableCopy[currentTableIndex].ackUser = user;
-
-    this.setState({
-      filteredTableData: filteredCopy
-    });
-  }
-
-
-
-  async ackIssue() {
-    let { issueToAck, rowAccountId } = this.state;
-    let currentUser = await this.getCurrentUser();
-
-    await this.triggerAckGQL(issueToAck, rowAccountId, currentUser.name);
-  }
-
-  async triggerAckGQL(issue, acctId, ackUser) {
-    let mutation = `
+    const mutation = `
         mutation {
-          aiIssuesAckIssue(accountId: ${acctId}, issueId: "${issue}") {
+          aiIssuesAckIssue(accountId: ${rowAccountId}, issueId: "${issueToAck}") {
             error
             result {
               action
@@ -568,115 +387,58 @@ export default class OpenIssues extends React.Component {
         }
       `;
 
-      const res = await NerdGraphMutation.mutate({
-        mutation: mutation
-      });
-
+    try {
+      const res = await NerdGraphMutation.mutate({ mutation });
       if (res.error) {
-        console.debug(`Failed to ack issue: ${issue} within account: ${acctId}`);
+        console.debug(
+          `Failed to ack issue: ${issueToAck} within account: ${rowAccountId}`
+        );
         Toast.showToast({
           title: 'Failed to ack issue.',
-          type: Toast.TYPE.CRITICAL
+          type: Toast.TYPE.CRITICAL,
         });
-      } else {
-        await this.updateAckCell(issue, ackUser);
-        this.setState({ ackModalHidden: true });
-        AccountStorageMutation.mutate({
-          accountId: this.props.nerdStoreAccount,
-          actionType: AccountStorageMutation.ACTION_TYPE.WRITE_DOCUMENT,
-          collection: 'IssueAcksV2',
-          documentId: issue,
-          document: {
-            user: ackUser
-          }
-        })
-        .then(data => {
-          Toast.showToast({
-            title: 'Issue acknowledged!',
-            type: Toast.TYPE.Normal
-          });
-        })
-        .catch(error => {
-          console.debug(error);
-          Toast.showToast({
-            title: error.message,
-            type: Toast.TYPE.CRITICAL
-          });
-        });
+        return;
       }
-  }
-
-  async loadAcksFromNerdStore() {
-    try {
-      const { data } = await AccountStorageQuery.query({
-        accountId: this.props.nerdStoreAccount,
-        collection: 'IssueAcksV2',
-        fetchPolicyType: AccountStorageQuery.FETCH_POLICY_TYPE.CACHE_FIRST
-      });
-      return data || [];
-    } catch (error) {
-      console.debug(error);
-      return [];
-    }
-  }
-
-  removeOldAcks(acksFromNerdStore) {
-    const loadedData = this.state.tableData;
-
-    acksFromNerdStore.forEach(ack => {
-      const index = loadedData.findIndex(
-        i => i.issueId == ack.id
+      setTableData((prev) =>
+        prev.map((row) =>
+          row.issueId === issueToAck ? { ...row, ackUser: userName } : row
+        )
       );
-      if (index === -1) {
-        this.deleteAckFromNerdStore(ack.id);
+      setAckModal({ hidden: true, issueToAck: null, rowAccountId: null });
+      try {
+        await acksStore.write(issueToAck, { user: userName });
+        Toast.showToast({
+          title: 'Issue acknowledged!',
+          type: Toast.TYPE.NORMAL,
+        });
+      } catch (err) {
+        console.debug(err);
+        Toast.showToast({ title: err.message, type: Toast.TYPE.CRITICAL });
       }
-    });
-  }
+    } catch (err) {
+      console.debug(err);
+      Toast.showToast({
+        title: 'Failed to ack issue.',
+        type: Toast.TYPE.CRITICAL,
+      });
+    }
+  }, [ackModal, acksStore]);
 
-  deleteAckFromNerdStore(iId) {
-    AccountStorageMutation.mutate({
-      accountId: this.props.nerdStoreAccount,
-      actionType: AccountStorageMutation.ACTION_TYPE.DELETE_DOCUMENT,
-      collection: 'IssueAcksV2',
-      documentId: iId
-    });
-  }
-
-  getInitials(user) {
-    var initials = user.match(/\b\w/g) || [];
-    initials = ((initials.shift() || '') + (initials.pop() || '')).toUpperCase();
-    return initials;
-  }
-
-  openCloseModal(row) {
-    this.setState({
-      closeModalHidden: false,
+  const openCloseModal = useCallback((row) => {
+    setCloseModal({
+      hidden: false,
       issueToClose: row.issueId,
-      rowAccountId: row.accountId
+      rowAccountId: row.accountId,
     });
-  }
+  }, []);
 
-  _onCloseModal() {
-    this.setState({
-      closeModalHidden: true,
-      issueToClose: null,
-      rowAccountId: null
-    });
-  }
+  const cancelCloseModal = useCallback(() => {
+    setCloseModal({ hidden: true, issueToClose: null, rowAccountId: null });
+  }, []);
 
-  removeRow(issueToClose) {
-    let { filteredTableData } = this.state;
-
-    let filteredTableDataCopy = filteredTableData.filter(item => item.issueId !== issueToClose)
-
-    this.setState({
-      filteredTableData: filteredTableDataCopy
-    });
-  }
-
-  async closeIssue() {
-    const { issueToClose, rowAccountId } = this.state;
-    let mutation = `
+  const closeIssue = useCallback(async () => {
+    const { issueToClose, rowAccountId } = closeModal;
+    const mutation = `
         mutation {
           aiIssuesResolveIssue(accountId: ${rowAccountId}, issueId: "${issueToClose}") {
             error
@@ -688,354 +450,152 @@ export default class OpenIssues extends React.Component {
           }
         }
       `;
-
-      const res = await NerdGraphMutation.mutate({
-        mutation: mutation
-      });
-
+    try {
+      const res = await NerdGraphMutation.mutate({ mutation });
       if (res.error) {
-        console.debug(`Failed to close issue: ${issueToClose} within account: ${rowAccountId}`);
+        console.debug(
+          `Failed to close issue: ${issueToClose} within account: ${rowAccountId}`
+        );
         Toast.showToast({
           title: 'Failed to close issue.',
-          type: Toast.TYPE.CRITICAL
+          type: Toast.TYPE.CRITICAL,
         });
-      } else {
-        await this.removeRow(issueToClose) //remove row from table
-        this.setState({ closeModalHidden: true });
-        Toast.showToast({
-          title: 'Issue closed!',
-          type: Toast.TYPE.Normal
-        });
+        return;
       }
-  }
-
-  getFilteredData(searchText) {
-    const { tableData } = this.state;
-    return tableData.filter(row => {
-      return (
-        row.accountName.toLowerCase().includes(searchText.toLowerCase()) ||
-        row.priority.toLowerCase().includes(searchText.toLowerCase()) ||
-        row.name.toLowerCase().includes(searchText.toLowerCase()) ||
-        row.mutingState.toLowerCase().includes(searchText.toLowerCase()) ||
-        (row.relatedEntityName ?? '').toString().toLowerCase().includes(searchText.toLowerCase())
+      setTableData((prev) =>
+        prev.filter((row) => row.issueId !== issueToClose)
       );
-    });
-  }
+      setCloseModal({ hidden: true, issueToClose: null, rowAccountId: null });
+      Toast.showToast({ title: 'Issue closed!', type: Toast.TYPE.NORMAL });
+    } catch (err) {
+      console.debug(err);
+      Toast.showToast({
+        title: 'Failed to close issue.',
+        type: Toast.TYPE.CRITICAL,
+      });
+    }
+  }, [closeModal]);
 
-  getFilteredExportableData(searchText) {
-    const { fullExportableData } = this.state;
+  const openEntitiesModal = useCallback(async (entityIds) => {
+    const ids = entityIds || [];
+    setEntityModal({ hidden: false, loading: true, entities: [] });
 
-    return fullExportableData.filter(row => {
-      return (
-        row.Account.toLowerCase().includes(searchText.toLowerCase()) ||
-        row.Title.toLowerCase().includes(searchText.toLowerCase()) ||
-        row.Priority.toLowerCase().includes(searchText.toLowerCase()) ||
-        row.Muted.toLowerCase().includes(searchText.toLowerCase()) ||
-        row.Entities.toLowerCase().includes(searchText.toLowerCase())
-      );
-    });
-  }
-
-  handleFilterChange(e) {
-    const filterString = e.target.value;
-
-    this.setState({
-      searchText: filterString,
-      filteredTableData: this.getFilteredData(filterString),
-      exportableData: this.getFilteredExportableData(filterString)
-    });
-  }
-
-  renderTable() {
-    const {
-      searchText,
-      filteredTableData,
-      tableData,
-      slicedTableData,
-      column,
-      direction,
-      activePage
-    } = this.state;
-
-    const tableHeaders = [
-      'ID',
-      'Account',
-      'Title',
-      'IncidentCount',
-      'Entities',
-      'Priority',
-      'Opened At',
-      'Duration',
-      'Muted',
-      'Ack',
-      'Close',
-      'Links'
-    ];
-
-    // let maxResultsPerPage = 25;
-    // let totalPages = Math.ceil(tableData.length / maxResultsPerPage)
-    //          wordBreak: 'break-word'
-
-    let domain = window.location.href
-    let base = 'https://radar-api.service.newrelic.com';
-    if (domain.includes('one.eu')) {
-      base = 'https://radar-api.service.eu.newrelic.com';
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += 25) {
+      chunks.push(ids.slice(i, i + 25));
     }
 
+    try {
+      const results = await Promise.all(
+        chunks.map((chunk) =>
+          NerdGraphQuery.query({
+            query: query.entityStatusByIssue(chunk.join('","')),
+          })
+        )
+      );
+      const flatEntities = results.flatMap((res) => {
+        if (res.error) {
+          console.debug('Failed to fetch entity status chunk');
+          console.debug(res.error);
+          return [];
+        }
+        return res.data.actor.entities || [];
+      });
+      setEntityModal({ hidden: false, loading: false, entities: flatEntities });
+    } catch (err) {
+      console.debug(err);
+      setEntityModal({ hidden: false, loading: false, entities: [] });
+    }
+  }, []);
+
+  const closeEntitiesModal = useCallback(() => {
+    setEntityModal({ hidden: true, loading: false, entities: [] });
+  }, []);
+
+  if (openLoading && tableData.length === 0) {
     return (
-      <div
-        style={{
-          overflowY: 'scroll',
-          display: tableData.length === 0 || tableData == null ? 'none' : 'flex'
-        }}
-      >
-        <Table compact selectable sortable celled>
-          <Table.Header class="sorted ascending">
-            <Table.Row>
-              {tableHeaders.map((header, k) => {
-                return (
-                  <Table.HeaderCell
-                    sorted={column === header ? direction : undefined}
-                    onClick={() => this.handleSort(header)}
-                    width={this.getWidth(header)}
-                    key={k}
-                  >
-                    {header}
-                  </Table.HeaderCell>
-                );
-              })}
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
-            {filteredTableData.map((row, p) => {
-
-              let a = row.activatedAt/1000;
-
-              return (
-                <Table.Row key={p}>
-                  <Table.Cell>
-                    <a href={`${base}/accounts/${row.accountId.toString()}/issues/${row.issueId}?notifier=&action=`} target="_blank" rel="noreferrer">
-                      {row.issueId}
-                    </a>
-                  </Table.Cell>
-                  <Table.Cell>{row.accountName}</Table.Cell>
-                  <Table.Cell>{row.name}</Table.Cell>
-                  <Table.Cell>{row.incidentCount}</Table.Cell>
-                  <Table.Cell><p style={{wordBreak: 'break-word'}}>{typeof row.relatedEntityName == "undefined" ? "" : row.relatedEntityName.toString()}</p></Table.Cell>
-                  <Table.Cell>{row.priority}</Table.Cell>
-                  <Table.Cell>
-                    {moment.unix(a).format('MM/DD/YY, h:mm a')}
-                  </Table.Cell>
-                  <Table.Cell>
-                    {row.duration.get('days') > 0
-                      ? `${row.duration.get('days')}d `
-                      : ''}
-                    {row.duration.get('hours') > 0
-                      ? `${row.duration.get('hours')}hr `
-                      : ''}
-                    {row.duration.get('minutes') > 0
-                      ? `${row.duration.get('minutes')}m `
-                      : ''}
-                    {row.duration.get('seconds') > 0
-                      ? `${row.duration.get('seconds')}s `
-                      : ''}
-                  </Table.Cell>
-                  <Table.Cell>{row.mutingState == 'NOT_MUTED' ? 'false' : 'true'}</Table.Cell>
-                  <Table.Cell>
-                  {
-                    row.ackUser == null
-                    ?
-                    <Button
-                      onClick={() => this.openAckModal(row)}
-                      type={Button.TYPE.PRIMARY}
-                      iconType={Button.ICON_TYPE.INTERFACE__OPERATIONS__FOLLOW}
-                    />
-                    :
-                    <Tooltip text={row.ackUser} placementType={Tooltip.PLACEMENT_TYPE.BOTTOM}>
-                    <Button
-                      style={{"backgroundColor": "black"}}
-                      type={Button.TYPE.PRIMARY}
-                    >
-                    <strong>{this.getInitials(row.ackUser)}</strong>
-                    </Button>
-                    </Tooltip>
-                  }
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Button
-                      onClick={() => this.openCloseModal(row)}
-                      type={Button.TYPE.PRIMARY}
-                      iconType={
-                        Button.ICON_TYPE.INTERFACE__OPERATIONS__ALERT__A_REMOVE
-                      }
-                    />
-                  </Table.Cell>
-                  <Table.Cell>
-                    <div style={{ display: 'inline-flex' }}>
-                      <Button
-                        onClick={() => this.openLinkModal(row)}
-                        type={Button.TYPE.PRIMARY}
-                        iconType={
-                          Button.ICON_TYPE.DOCUMENTS__DOCUMENTS__NOTES__A_EDIT
-                        }
-                      />
-                      <a
-                        className="notesLink"
-                        href={row.link}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {row.display}
-                      </a>
-                    </div>
-                  </Table.Cell>
-                </Table.Row>
-              );
-            })}
-          </Table.Body>
-        </Table>
+      <div style={{ textAlign: 'center' }}>
+        <h4>Loading</h4>
+        <Spinner type={Spinner.TYPE.DOT} />
       </div>
     );
   }
 
-  render() {
-    const {
-      currentTime,
-      displayText,
-      exportableData,
-      filteredTableData,
-      linkText,
-      openLoading,
-      searchText,
-      tableData
-    } = this.state;
-
-    let render = <Spinner />;
-
-    if (openLoading && tableData.length == 0) {
-      render = (
-        <div style={{ textAlign: 'center' }}>
-          <h4>Loading</h4>
-          <Spinner type={Spinner.TYPE.DOT} />
-        </div>
-      );
-    } else if (!openLoading && tableData.length == 0) {
-      render = (
-        <div>
-          <h3>No open incidents found during the time window selected!</h3>
-          <span className="refreshLabel">
-            Last Refreshed: <strong>{currentTime}</strong>
-          </span>
-        </div>
-      );
-    } else {
-      render = (
-        <>
-          <Input
-            style={{ marginBottom: '3px' }}
-            icon="search"
-            placeholder="Search Issues..."
-            onChange={e => this.handleFilterChange(e)}
-          />
-          &nbsp;&nbsp;&nbsp;
-          <Button
-            className="exportIncidents"
-            onClick={() => csvDownload(exportableData, 'open_issues.csv')}
-            type={Button.TYPE.PRIMARY}
-            iconType={Button.ICON_TYPE.INTERFACE__OPERATIONS__EXPORT}
-          >
-            Export
-          </Button>
-          {this.renderTable()}
-          <span className="refreshLabel">
-            Last Refreshed: <strong>{currentTime}</strong>
-          </span>
-          <Modal
-            hidden={this.state.linkModalHidden}
-            onClose={() => this._onCloseLinkModal()}
-          >
-            <HeadingText>
-              <strong>Edit Link</strong>
-            </HeadingText>
-            <TextField
-              style={{ marginRight: '2px' }}
-              value={displayText || ''}
-              onChange={e => this.setState({ displayText: e.target.value })}
-              label="Text to Display"
-            />
-            <TextField
-              value={linkText || ''}
-              onChange={e => this.setState({ linkText: e.target.value })}
-              label="Link To"
-            />
-            <br />
-            <Button
-              type={Button.TYPE.PRIMARY}
-              className="modalBtn"
-              onClick={() => this.saveLinkToNerdStore()}
-            >
-              Save
-            </Button>
-            <Button
-              type={Button.TYPE.DESTRUCTIVE}
-              className="modalBtn"
-              onClick={() => this._onCloseLinkModal()}
-            >
-              Close
-            </Button>
-          </Modal>
-          <Modal
-            hidden={this.state.ackModalHidden}
-            onClose={() => this._onCloseAckModal()}
-          >
-            <HeadingText>
-              <strong>
-                Are you sure you want to acknowledge this issue?
-              </strong>
-            </HeadingText>
-            <Button
-              type={Button.TYPE.PRIMARY}
-              className="modalBtn"
-              onClick={() => this.ackIssue()}
-            >
-              Yes
-            </Button>
-            <Button
-              type={Button.TYPE.DESTRUCTIVE}
-              className="modalBtn"
-              onClick={() => this._onCloseAckModal()}
-            >
-              No
-            </Button>
-          </Modal>
-          <Modal
-            hidden={this.state.closeModalHidden}
-            onClose={() => this._onCloseModal()}
-          >
-            <HeadingText>
-              <strong>
-                Are you sure you want to close this issue?
-              </strong>
-            </HeadingText>
-            <Button
-              type={Button.TYPE.PRIMARY}
-              className="modalBtn"
-              onClick={() => this.closeIssue()}
-            >
-              Yes
-            </Button>
-            <Button
-              type={Button.TYPE.DESTRUCTIVE}
-              className="modalBtn"
-              onClick={() => this._onCloseModal()}
-            >
-              No
-            </Button>
-          </Modal>
-        </>
-      );
-    }
-
-    return <>{render}</>;
+  if (!openLoading && tableData.length === 0) {
+    return (
+      <div>
+        <h3>No open incidents found during the time window selected!</h3>
+        <span className="refreshLabel">
+          Last Refreshed: <strong>{currentTime}</strong>
+        </span>
+      </div>
+    );
   }
+
+  return (
+    <>
+      <Input
+        style={{ marginBottom: '3px' }}
+        icon="search"
+        placeholder="Search Issues..."
+        onChange={(e) => setSearchText(e.target.value)}
+      />
+      &nbsp;&nbsp;&nbsp;
+      <Button
+        className="exportIncidents"
+        onClick={() => csvDownload(exportableRows, 'open_issues.csv')}
+        type={Button.TYPE.PRIMARY}
+        iconType={Button.ICON_TYPE.INTERFACE__OPERATIONS__EXPORT}
+      >
+        Export
+      </Button>
+      <IssuesTable
+        rows={filteredRows}
+        column={sort.column}
+        direction={sort.direction}
+        baseUrl={baseUrl}
+        onSort={handleSort}
+        onOpenAck={openAckModal}
+        onOpenClose={openCloseModal}
+        onOpenLink={openLinkModal}
+        onOpenEntities={openEntitiesModal}
+      />
+      <span className="refreshLabel">
+        Last Refreshed: <strong>{currentTime}</strong>
+      </span>
+      <LinkModal
+        hidden={linkModal.hidden}
+        displayText={displayText}
+        linkText={linkText}
+        onChangeDisplay={setDisplayText}
+        onChangeLink={setLinkText}
+        onSave={saveLink}
+        onClose={closeLinkModal}
+      />
+      <ConfirmModal
+        hidden={ackModal.hidden}
+        heading="Are you sure you want to acknowledge this issue?"
+        onConfirm={ackIssue}
+        onCancel={cancelAckModal}
+      />
+      <ConfirmModal
+        hidden={closeModal.hidden}
+        heading="Are you sure you want to close this issue?"
+        onConfirm={closeIssue}
+        onCancel={cancelCloseModal}
+      />
+      <EntitiesModal
+        hidden={entityModal.hidden}
+        loading={entityModal.loading}
+        entities={entityModal.entities}
+        onClose={closeEntitiesModal}
+      />
+    </>
+  );
 }
+
+OpenIssues.propTypes = {
+  accounts: PropTypes.array.isRequired,
+  nerdStoreAccount: PropTypes.oneOfType([PropTypes.string, PropTypes.number])
+    .isRequired,
+};
