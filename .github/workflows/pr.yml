@@ -9,15 +9,9 @@ on:
     branches:
       - main
 
-permissions:
-  contents: read
-
   repository_dispatch:
     types: [pull-request]
 
-permissions:
-  contents: read
-  pull-requests: write
 
 jobs:
   checkout-and-build-pr:
