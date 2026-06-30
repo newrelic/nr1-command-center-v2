@@ -11,6 +11,10 @@ permissions:
   repository_dispatch:
     types: [pull-request]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   checkout-and-build-pr:
     name: checkout-and-build-pr
