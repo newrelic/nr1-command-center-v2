@@ -2,7 +2,6 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import PropTypes from 'prop-types';
@@ -15,7 +14,9 @@ import {
   UserQuery,
 } from 'nr1';
 import { Input } from 'semantic-ui-react';
-import moment from 'moment';
+import dayjs from 'dayjs';
+import duration from 'dayjs/plugin/duration';
+dayjs.extend(duration);
 import orderBy from 'lodash/orderBy';
 import csvDownload from 'json-to-csv-export';
 
@@ -142,7 +143,6 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
   const { fetchUserName } = useCurrentUser();
 
   const baseUrl = useMemo(() => buildBaseUrl(), []);
-  const tableExportableRef = useRef([]);
 
   const accountSignature = useMemo(
     () =>
@@ -154,7 +154,7 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
   );
 
   const getTableData = useCallback(async () => {
-    const currTime = moment().format('LT');
+    const currTime = dayjs().format('h:mm A');
     try {
       const [storedLinks, storedAcks, perAccount] = await Promise.all([
         linksStore.load(),
@@ -169,14 +169,16 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
           if (issue.acknowledgedBy) distinctAckIds.add(issue.acknowledgedBy);
         }
       }
-      // Resolve them in one batch (the cache inside useCurrentUser dedupes future hits too)
-      await Promise.all(
-        Array.from(distinctAckIds).map((id) => fetchUserName(id))
+      // Resolve all in parallel and build a Map for O(1) lookup below
+      const userNameEntries = await Promise.all(
+        Array.from(distinctAckIds).map(async (id) => [id, await fetchUserName(id)])
       );
+      const userNamesMap = new Map(userNameEntries);
 
       const flatTable = [];
-      const exportable = [];
-      const now = moment();
+      const now = dayjs();
+      const linksMap = new Map(storedLinks.map((lnk) => [String(lnk.id), lnk]));
+      const acksMap = new Map(storedAcks.map((ack) => [String(ack.id), ack]));
 
       for (const acctData of perAccount) {
         for (const issue of acctData.issues) {
@@ -184,39 +186,20 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
           applyTagsToIssue(issue);
 
           const activatedSec = Number(issue.activatedAt) / 1000;
-          issue.duration = moment.duration(now.diff(moment.unix(activatedSec)));
+          issue.duration = dayjs.duration(now.diff(dayjs.unix(activatedSec)));
 
-          const entities =
-            issue.relatedEntityName != null
-              ? issue.relatedEntityName.toString()
-              : '';
-
-          const matchedLink = storedLinks.find(
-            (lnk) => String(issue.issueId) === String(lnk.id)
-          );
+          const matchedLink = linksMap.get(String(issue.issueId));
           issue.display = matchedLink?.document?.displayText ?? null;
           issue.link = matchedLink?.document?.linkText ?? null;
 
           if (issue.acknowledgedBy) {
-            issue.ackUser = (await fetchUserName(issue.acknowledgedBy)) || null;
+            issue.ackUser = userNamesMap.get(issue.acknowledgedBy) || null;
           } else {
-            const matchedAck = storedAcks.find(
-              (ack) => String(issue.issueId) === String(ack.id)
-            );
+            const matchedAck = acksMap.get(String(issue.issueId));
             issue.ackUser = matchedAck?.document?.user ?? null;
           }
 
           flatTable.push(issue);
-          exportable.push({
-            Account: acctData.account,
-            Title: issue.name,
-            IncidentCount: issue.incidentCount,
-            Entities: entities,
-            Priority: issue.priority,
-            Muted: issue.mutingState,
-            'Opened At': moment.unix(activatedSec).format('MM/DD/YYYY, h:mm a'),
-            Link: issue.link,
-          });
         }
       }
 
@@ -238,8 +221,6 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
         }
       }
 
-      // Capture exportable on the table data via closure for CSV consumer
-      tableExportableRef.current = exportable;
     } catch (err) {
       console.debug('open-issues fetch failed', err);
       setOpenLoading(false);
@@ -289,20 +270,20 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
     );
   }, [sortedRows, debouncedSearch]);
 
-  const exportableRows = useMemo(() => {
-    const needle = debouncedSearch.toLowerCase();
-    const all = tableExportableRef.current;
-    if (!needle) return all;
-    return all.filter(
-      (row) =>
-        row.Account.toLowerCase().includes(needle) ||
-        row.Title.toLowerCase().includes(needle) ||
-        (row.Priority || '').toLowerCase().includes(needle) ||
-        (row.Muted || '').toLowerCase().includes(needle) ||
-        (row.Entities || '').toLowerCase().includes(needle)
-    );
-    // depend on tableData so the memo re-runs whenever the underlying ref is updated
-  }, [debouncedSearch, tableData]);
+  const exportableRows = useMemo(
+    () =>
+      filteredRows.map((row) => ({
+        Account: row.accountName,
+        Title: row.name,
+        IncidentCount: row.incidentCount,
+        Entities: row.relatedEntityName != null ? row.relatedEntityName.toString() : '',
+        Priority: row.priority,
+        Muted: row.mutingState,
+        'Opened At': dayjs.unix(row.activatedAt / 1000).format('MM/DD/YYYY, h:mm a'),
+        Link: row.link,
+      })),
+    [filteredRows]
+  );
 
   const openLinkModal = useCallback((row) => {
     setLinkModal({ hidden: false, rowIssueId: row.issueId });

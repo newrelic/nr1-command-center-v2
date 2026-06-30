@@ -6,7 +6,7 @@ export default function useNerdStoreCollection(accountId, collection) {
     const res = await AccountStorageQuery.query({
       accountId,
       collection,
-      fetchPolicyType: AccountStorageQuery.FETCH_POLICY_TYPE.CACHE_FIRST,
+      fetchPolicyType: AccountStorageQuery.FETCH_POLICY_TYPE.NETWORK_ONLY,
     });
     return res?.data || [];
   }, [accountId, collection]);

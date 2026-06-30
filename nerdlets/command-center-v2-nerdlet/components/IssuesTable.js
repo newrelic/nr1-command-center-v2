@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import PropTypes from 'prop-types';
 import { Badge, Button, Tooltip } from 'nr1';
 import { Table } from 'semantic-ui-react';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 import { BADGE_TYPES } from '../constants';
 
@@ -117,7 +117,7 @@ function IssuesTable({
                   </Badge>
                 </Table.Cell>
                 <Table.Cell>
-                  {moment.unix(activatedSec).format('MM/DD/YY, h:mm a')}
+                  {dayjs.unix(activatedSec).format('MM/DD/YY, h:mm a')}
                 </Table.Cell>
                 <Table.Cell>
                   {row.duration.get('days') > 0

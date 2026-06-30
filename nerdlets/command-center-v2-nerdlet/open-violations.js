@@ -9,7 +9,9 @@ import {
   Toast,
 } from 'nr1';
 import { Input } from 'semantic-ui-react';
-import moment from 'moment';
+import dayjs from 'dayjs';
+import duration from 'dayjs/plugin/duration';
+dayjs.extend(duration);
 import orderBy from 'lodash/orderBy';
 import csvDownload from 'json-to-csv-export';
 
@@ -63,10 +65,10 @@ async function fetchViolationData(aRecord, viosCsv, time) {
     return [];
   }
   const vioData = res.data.actor.account.nrql.results;
-  const now = moment();
+  const now = dayjs();
   for (const vio of vioData) {
-    const end = moment(vio.openTime);
-    vio.duration = moment.duration(now.diff(end));
+    const end = dayjs(vio.openTime);
+    vio.duration = dayjs.duration(now.diff(end));
     vio.accountName = aRecord.account;
   }
   return vioData;
@@ -80,7 +82,7 @@ function buildExportable(formattedTable) {
     Entity: row.targetName,
     Description: row.title,
     Priority: row.priority,
-    'Opened At': moment(row.openTime).format('MM/DD/YYYY, h:mm a'),
+    'Opened At': dayjs(row.openTime).format('MM/DD/YYYY, h:mm a'),
     Muted: row.muted.toString(),
     MutingRuleId: row.mutingRuleId == null ? null : row.mutingRuleId,
     MutingRuleName: row.mutingRuleName == null ? null : row.mutingRuleName,
@@ -135,7 +137,7 @@ export default function OpenIncidents({ time, accounts, nerdStoreAccount }) {
   );
 
   const getTableData = useCallback(async () => {
-    const currTime = moment().format('LT');
+    const currTime = dayjs().format('h:mm A');
     try {
       const storedLinks = await links.load();
       const idsByAccount = await Promise.all(
@@ -155,10 +157,9 @@ export default function OpenIncidents({ time, accounts, nerdStoreAccount }) {
       );
 
       const formattedTable = dataChunks.flat();
+      const linksMap = new Map(storedLinks.map((lnk) => [String(lnk.id), lnk]));
       for (const row of formattedTable) {
-        const match = storedLinks.find(
-          (lnk) => Number(lnk.id) === row.incidentId
-        );
+        const match = linksMap.get(String(row.incidentId));
         row.display = match?.document?.displayText ?? null;
         row.link = match?.document?.linkText ?? null;
       }

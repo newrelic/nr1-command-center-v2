@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import PropTypes from 'prop-types';
 import { Badge, Button, Tooltip } from 'nr1';
 import { Table } from 'semantic-ui-react';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 import { BADGE_TYPES } from '../constants';
 
@@ -156,7 +156,7 @@ function IncidentsTable({
                 </Badge>
               </Table.Cell>
               <Table.Cell>
-                {moment(row.openTime).format('MM/DD/YY, h:mm a')}
+                {dayjs(row.openTime).format('MM/DD/YY, h:mm a')}
               </Table.Cell>
               <Table.Cell>
                 {row.duration.get('days') > 0
@@ -202,14 +202,16 @@ function IncidentsTable({
                       Button.ICON_TYPE.DOCUMENTS__DOCUMENTS__NOTES__A_EDIT
                     }
                   />
-                  <a
-                    className="notesLink"
-                    href={row.link}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {row.display}
-                  </a>
+                    {row.link && row.display && (
+                      <a
+                        className="notesLink"
+                        href={row.link}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {row.display}
+                      </a>
+                    )}
                 </div>
               </Table.Cell>
             </Table.Row>
