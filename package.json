@@ -1,7 +1,7 @@
 {
     "private": true,
     "name": "command-center-v2",
-    "version": "2.4.1",
+    "version": "2.4.2",
     "scripts": {
         "start": "nr1 nerdpack:serve",
         "test": "exit 0",
@@ -12,12 +12,12 @@
         "uuid": "974cbbf2-7f13-4765-82bb-8e7337e25408"
     },
     "bugs": {
-      "email": "opensource@newrelic.com"
+        "email": "opensource@newrelic.com"
     },
     "dependencies": {
+        "dayjs": "^1.11.21",
         "json-to-csv-export": "^1.1.0",
         "lodash": "^4.17.21",
-        "moment": "^2.29.0",
         "prop-types": "^15.6.2",
         "react": "^16.6.3",
         "react-dom": "^16.6.3",
@@ -30,10 +30,10 @@
         "not dead"
     ],
     "devDependencies": {
-      "@newrelic/eslint-plugin-newrelic": "^0.3.1",
-      "@semantic-release/changelog": "^5.0.1",
-      "@semantic-release/git": "^9.0.0",
-      "eslint": "^6.8.0",
-      "prettier": "^1.19.1"
+        "eslint": "^8.57.1",
+        "eslint-config-prettier": "^10.1.8",
+        "eslint-plugin-prettier": "^5.5.6",
+        "eslint-plugin-react": "^7.37.5",
+        "prettier": "^3.8.4"
     }
 }

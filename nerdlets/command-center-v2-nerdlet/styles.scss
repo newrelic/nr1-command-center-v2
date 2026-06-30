@@ -1,4 +1,44 @@
 @import url('//cdn.jsdelivr.net/npm/semantic-ui@2.4.1/dist/semantic.min.css');
+//Status variables
+$success: #01A76A;
+$warning: #FFD23D;
+$critical: #F5554B;
+$unknown: #9EA5A9;
+
+//Hexagon size
+$small-hex-width: 18px;
+$small-hex-height: 20px;
+
+.status-icon-small {
+  cursor: pointer;
+  display: inline-flex;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  height: $small-hex-height;
+  width: $small-hex-width;
+  transition: all .2s ease;
+  margin-left: 4px;
+  margin-bottom: -2.5px;
+  margin-right: 4px;
+  margin-top: 2px;
+
+  &.success {
+    background-color: $success;
+  }
+  &.warning {
+    background-color: $warning;
+  }
+  &.critical {
+    background-color: $critical;
+  }
+  &.unknown {
+    background-color: $unknown;
+  }
+
+  &:hover {
+    transform: scale(1.2);
+  }
+}
+
 
 .sortBy {
   position: fixed;
@@ -21,4 +61,10 @@
   margin-bottom: 3px;
   position: sticky;
   left: 97%
+}
+
+.cell-wrap {
+  overflow: hidden;
+  word-break: break-word;
+  display: block;
 }

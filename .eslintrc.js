@@ -1,30 +1,16 @@
 module.exports = {
-    "env": {
-        "browser": true,
-        "es6": true
-    },
-    "extends": [
-        'plugin:@newrelic/eslint-plugin-newrelic/react',
-        'plugin:@newrelic/eslint-plugin-newrelic/jest',
-        'plugin:@newrelic/eslint-plugin-newrelic/prettier'
-    ],
-    "globals": {
-        "Atomics": "readonly",
-        "SharedArrayBuffer": "readonly"
-    },
-    "parser": "babel-eslint",
-    "parserOptions": {
-        "ecmaFeatures": {
-            "jsx": true
-        },
-        "ecmaVersion": 2018,
-        "sourceType": "module"
-    },
-    "plugins": [
-        "react",
-        "prettier"
-    ],
-    "rules": {
-        "prettier/prettier": "error"
-    }
+  env: { browser: true, node: true, es2022: true, jest: true },
+  extends: [
+    'eslint:recommended',
+    'plugin:react/recommended',
+    'plugin:prettier/recommended'
+  ],
+  parserOptions: {
+    ecmaVersion: 2022,
+    sourceType: 'module',
+    ecmaFeatures: { jsx: true }
+  },
+  settings: { react: { version: 'detect' } },
+  globals: { Atomics: 'readonly', SharedArrayBuffer: 'readonly' },
+  rules: { 'prettier/prettier': 'error' }
 };

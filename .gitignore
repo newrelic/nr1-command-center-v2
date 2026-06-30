@@ -6,3 +6,9 @@ coverage
 tmp*
 .DS_Store
 old*
+
+
+.codegraph
+CLAUDE.md
+.claude
+doctor.config.json

@@ -44,20 +44,6 @@ module.exports = {
       `;
     }
   },
-  anomalyCount: (account, time) => {
-    // pulls **only open** anomalies - watcher (custom) + non-custom
-    return `
-    {
-      actor {
-        account(id: ${account}) {
-          nrql(query: "SELECT count(*) FROM (SELECT uniqueCount(event) as 'total', latest(event) as 'state' FROM NrAiAnomaly where event in ('open', 'close') facet anomalyId limit max) where total = 1 and state = 'open' limit max ${time}") {
-            results
-          }
-        }
-      }
-    }
-    `;
-  },
   /** ******* Overview *******/
   /** ******* Open Violations *******/
   openViolations: (account, time) => {
@@ -135,7 +121,7 @@ module.exports = {
     }
   },
 
-  userName: userId => {
+  userName: (userId) => {
     return `    
       {
         actor {
@@ -152,38 +138,23 @@ module.exports = {
       }
     `;
   },
-  /** ******* Open Issues *******/
-  /** ******* Open Anomalies *******/
-  openAnomalies: (account, time) => {
-    //get all open anomalyIds
-    return `
-    {
-      actor {
-        account(id: ${account}) {
-          nrql(query: "SELECT anomalyId FROM (SELECT uniqueCount(event) as 'total', latest(event) as 'state' FROM NrAiAnomaly where event in ('open', 'close') facet anomalyId limit max) where total = 1 and state = 'open' limit max ${time}") {
-            results
-          }
-        }
-      }
-    }
-    `;
-  },
-  openAnomalyData: (account, anoms, time) => {
-    //get all open anomalyIds
-    return `
-    {
-      actor {
-        account(id: ${account}) {
-          nrql(query: "FROM NrAiAnomaly SELECT anomalyId, entity.accountId, title, entity.name, entity.type, openTime, link where anomalyId in (${anoms}) and event = 'open' LIMIT MAX ${time}") {
-            results
-          }
-        }
-      }
-    }
-    `;
-  },
 
-  /** ******* Open Anomalies *******/
+  entityStatusByIssue: (guids) => {
+    // 25 guids per call max
+    return `
+      {
+  actor {
+    entities(guids: ["${guids}"]) {
+      guid
+      name
+      alertSeverity
+      permalink
+    }
+  }
+}
+    `;
+  },
+  /** ******* Open Issues *******/
   /** ******* Incident Analytics *******/
   issueCount: (account, time) => {
     // get all opened issues
@@ -191,7 +162,7 @@ module.exports = {
     {
       actor {
         account(id: ${account}) {
-          nrql(query: "SELECT uniqueCount(issueId) as 'count' FROM NrAiIssue where event in ('activate', 'acknowledge') LIMIT MAX ${time}") {
+          nrql(query: "SELECT uniqueCount(issueId) as 'count' FROM NrAiIssue where event in ('activate', 'acknowledge') LIMIT MAX ${time} COMPARE WITH 1 week ago") {
             results
           }
         }
@@ -259,6 +230,6 @@ module.exports = {
       }
     }
     `;
-  }
+  },
   /** ******* Incident Analytics *******/
 };
