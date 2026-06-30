@@ -202,16 +202,16 @@ function IncidentsTable({
                       Button.ICON_TYPE.DOCUMENTS__DOCUMENTS__NOTES__A_EDIT
                     }
                   />
-                    {row.link && row.display && (
-                      <a
-                        className="notesLink"
-                        href={row.link}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {row.display}
-                      </a>
-                    )}
+                  {row.link && row.display && (
+                    <a
+                      className="notesLink"
+                      href={row.link}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {row.display}
+                    </a>
+                  )}
                 </div>
               </Table.Cell>
             </Table.Row>

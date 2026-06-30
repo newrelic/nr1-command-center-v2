@@ -1,9 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import PropTypes from 'prop-types';
 import {
   Button,
@@ -171,7 +166,10 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
       }
       // Resolve all in parallel and build a Map for O(1) lookup below
       const userNameEntries = await Promise.all(
-        Array.from(distinctAckIds).map(async (id) => [id, await fetchUserName(id)])
+        Array.from(distinctAckIds).map(async (id) => [
+          id,
+          await fetchUserName(id),
+        ])
       );
       const userNamesMap = new Map(userNameEntries);
 
@@ -220,7 +218,6 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
           acksStore.remove(ack.id).catch((err) => console.debug(err));
         }
       }
-
     } catch (err) {
       console.debug('open-issues fetch failed', err);
       setOpenLoading(false);
@@ -276,10 +273,13 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
         Account: row.accountName,
         Title: row.name,
         IncidentCount: row.incidentCount,
-        Entities: row.relatedEntityName != null ? row.relatedEntityName.toString() : '',
+        Entities:
+          row.relatedEntityName != null ? row.relatedEntityName.toString() : '',
         Priority: row.priority,
         Muted: row.mutingState,
-        'Opened At': dayjs.unix(row.activatedAt / 1000).format('MM/DD/YYYY, h:mm a'),
+        'Opened At': dayjs
+          .unix(row.activatedAt / 1000)
+          .format('MM/DD/YYYY, h:mm a'),
         Link: row.link,
       })),
     [filteredRows]
