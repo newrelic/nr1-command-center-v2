@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
   repository_dispatch:
     types: [pull-request]
 
@@ -67,7 +70,7 @@ jobs:
             ${{ runner.os }}-node-modules-
 
       - name: Install Dependencies
-        run: npm ci --ignore-scripts
+        run: npm ci
 
       - name: Run eslint-check and generate report
         id: eslint-check
