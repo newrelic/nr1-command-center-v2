@@ -35,13 +35,13 @@ function getTooltip(title) {
   return TOOLTIP_BY_TITLE[title] || '';
 }
 
-async function fetchSingleDashboard(account, dashboardName) {
+async function fetchSingleDashboard(account) {
   const res = await NerdGraphQuery.query({
-    query: query.dashboards(account.id, dashboardName),
+    query: query.dashboards(account.id, 'Alert Quality Management'),
   });
   if (res.error) {
     console.debug(
-      `Failed to retrieve dashboard: ${dashboardName} within account: ${account.id}`
+      `Failed to retrieve Alert Quality Management dashboard within account: ${account.id}`
     );
     return { account: account.id, guid: null, name: null };
   }
@@ -111,7 +111,7 @@ function computeAggregate(acctData) {
   };
 }
 
-export default function Analytics({ time, accounts, dashboard }) {
+export default function Analytics({ time, accounts }) {
   const [loading, setLoading] = useState(true);
   const [aggregateData, setAggregateData] = useState(null);
   const [tableData, setTableData] = useState([]);
@@ -134,16 +134,17 @@ export default function Analytics({ time, accounts, dashboard }) {
     let active = true;
     setLoading(true);
     setTableData([]);
+    setDashboards(null);
 
-    const dashProms = accounts.map((a) => fetchSingleDashboard(a, dashboard));
-    const dataProms = accounts.map((a) => fetchAccountMetrics(a, time));
-
-    Promise.all([Promise.all(dataProms), Promise.all(dashProms)])
-      .then(([acctData, dashResults]) => {
+    Promise.all([
+      Promise.all(accounts.map((a) => fetchAccountMetrics(a, time))),
+      Promise.all(accounts.map((a) => fetchSingleDashboard(a))),
+    ])
+      .then(([acctData, dashboardData]) => {
         if (!active) return;
         setTableData(acctData);
         setAggregateData(computeAggregate(acctData));
-        setDashboards(dashResults);
+        setDashboards(dashboardData);
         setLoading(false);
       })
       .catch((err) => {
@@ -155,7 +156,7 @@ export default function Analytics({ time, accounts, dashboard }) {
     return () => {
       active = false;
     };
-  }, [time, accountSignature, dashboard]); // eslint-disable-line
+  }, [time, accountSignature]); // eslint-disable-line
 
   const handleSort = useCallback((clickedCol) => {
     setSort((prev) => {
@@ -174,7 +175,7 @@ export default function Analytics({ time, accounts, dashboard }) {
     return orderBy(
       tableData,
       [field],
-      [sort.direction === 'ascending' ? 'asc' : 'desc']
+      sort.direction === 'ascending' ? 'asc' : 'desc'
     );
   }, [tableData, sort]);
 
@@ -194,8 +195,8 @@ export default function Analytics({ time, accounts, dashboard }) {
         dashboards && dashboards.find((d) => d.account === r.id);
       if (!selectedDash || selectedDash.guid == null) {
         Toast.showToast({
-          title: 'Drilldown dashboard not found.',
-          description: `Please validate dashboard: ${dashboard} exists in account: ${r.id}`,
+          title: 'AQM dashboard not found.',
+          description: `Please validate Alert Quality Management dashboard exists in account: ${r.id}`,
           type: Toast.TYPE.CRITICAL,
         });
         return;
@@ -208,7 +209,7 @@ export default function Analytics({ time, accounts, dashboard }) {
         },
       });
     },
-    [dashboards, dashboard]
+    [dashboards]
   );
 
   if (loading || tableData.length === 0) {
@@ -248,5 +249,4 @@ export default function Analytics({ time, accounts, dashboard }) {
 Analytics.propTypes = {
   time: PropTypes.string.isRequired,
   accounts: PropTypes.array.isRequired,
-  dashboard: PropTypes.string,
 };

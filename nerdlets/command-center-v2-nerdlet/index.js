@@ -12,12 +12,8 @@ import Splash from './splash';
 import OpenIncidents from './open-violations';
 import OpenIssues from './open-issues';
 import Analytics from './analytics';
-import config from './config.json';
 import AccountFilterDropdown from './components/AccountFilterDropdown';
 import useAccounts from './hooks/useAccounts';
-
-const ACCOUNT_ID = config.accountId;
-const TEMPLATE_DASHBOARD = config.templateDashboard;
 
 function deriveTimeRange(platformUrlState) {
   if (!platformUrlState?.timeRange) return { since: '', rawTime: null };
@@ -38,7 +34,7 @@ function deriveTimeRange(platformUrlState) {
 }
 
 export default function CommandCenterV2NerdletNerdlet() {
-  const { accounts, validating, validUser } = useAccounts(ACCOUNT_ID);
+  const { accounts, loading } = useAccounts();
   const [filteredAccounts, setFilteredAccounts] = useState([]);
 
   const platformUrlState = useContext(PlatformStateContext);
@@ -91,20 +87,15 @@ export default function CommandCenterV2NerdletNerdlet() {
               time={since}
               rawTime={rawTime}
               accounts={filteredAccounts}
-              nerdStoreAccount={ACCOUNT_ID}
             />
           </Tab.Pane>
         ),
       },
       {
-        menuItem: 'Open Incidents',
+        menuItem: 'Open Alert Events',
         render: () => (
           <Tab.Pane>
-            <OpenIncidents
-              time={since}
-              accounts={filteredAccounts}
-              nerdStoreAccount={ACCOUNT_ID}
-            />
+            <OpenIncidents time={since} accounts={filteredAccounts} />
           </Tab.Pane>
         ),
       },
@@ -112,11 +103,7 @@ export default function CommandCenterV2NerdletNerdlet() {
         menuItem: 'Analytics',
         render: () => (
           <Tab.Pane>
-            <Analytics
-              time={since}
-              accounts={filteredAccounts}
-              dashboard={TEMPLATE_DASHBOARD}
-            />
+            <Analytics time={since} accounts={filteredAccounts} />
           </Tab.Pane>
         ),
       },
@@ -124,16 +111,12 @@ export default function CommandCenterV2NerdletNerdlet() {
     [since, rawTime, filteredAccounts]
   );
 
-  if (validating) {
+  if (loading) {
     return (
-      <Dimmer active={validating}>
+      <Dimmer active={loading}>
         <Loader size="medium">Loading</Loader>
       </Dimmer>
     );
-  }
-
-  if (!validUser) {
-    return <h3>Forbidden - Please validate accountId in config.json</h3>;
   }
 
   if (accounts.length === 0) {

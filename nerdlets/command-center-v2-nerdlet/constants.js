@@ -13,3 +13,5 @@ export const STATUSES = {
   CRITICAL: 'critical',
   NOT_CONFIGURED: 'unknown',
 };
+
+export const DEFAULT_REFRESH_RATE = 60000; // 60 seconds

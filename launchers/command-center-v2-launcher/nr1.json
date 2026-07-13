@@ -1,7 +1,7 @@
 {
     "schemaType": "LAUNCHER",
     "id": "command-center-v2-launcher",
-    "displayName": "Command Center V2",
-    "description": "Consolidated view of incidents, issues and analytics across many accounts",
+    "displayName": "Incident Command Center",
+    "description": "Consolidated view of alert events, issues and analytics across many accounts",
     "rootNerdletId": "command-center-v2-nerdlet"
 }

@@ -30,9 +30,16 @@
         "not dead"
     ],
     "devDependencies": {
+        "@babel/core": "^7.20.2",
+        "@babel/plugin-proposal-class-properties": "^7.18.6",
+        "@babel/preset-env": "^7.20.2",
+        "@babel/preset-react": "^7.18.6",
+        "@semantic-release/changelog": "^5.0.1",
+        "@semantic-release/git": "^9.0.0",
         "eslint": "^8.57.1",
         "eslint-config-prettier": "^10.1.8",
         "eslint-plugin-prettier": "^5.5.6",
+        "eslint-plugin-eslint-comments": "^3.2.0",
         "eslint-plugin-react": "^7.37.5",
         "prettier": "^3.8.4"
     }
