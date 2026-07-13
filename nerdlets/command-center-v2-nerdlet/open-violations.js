@@ -173,7 +173,9 @@ export default function OpenIncidents({ time, accounts }) {
       const idSet = new Set(formattedTable.map((r) => String(r.incidentId)));
       for (const lnk of storedLinks) {
         if (!idSet.has(String(lnk.id))) {
-          links.remove(lnk.id, lnk.accountId).catch((err) => console.debug(err));
+          links
+            .remove(lnk.id, lnk.accountId)
+            .catch((err) => console.debug(err));
         }
       }
     } catch (err) {
@@ -237,7 +239,11 @@ export default function OpenIncidents({ time, accounts }) {
   );
 
   const openLinkModal = useCallback((row) => {
-    setLinkModal({ hidden: false, rowIncidentId: row.incidentId, rowAccountId: row['account.id'] });
+    setLinkModal({
+      hidden: false,
+      rowIncidentId: row.incidentId,
+      rowAccountId: row['account.id'],
+    });
   }, []);
 
   const closeLinkModal = useCallback(() => {
@@ -268,7 +274,11 @@ export default function OpenIncidents({ time, accounts }) {
     );
     setLinkModal({ hidden: true, rowIncidentId: null, rowAccountId: null });
     try {
-      await links.write(docKey, { displayText, linkText }, linkModal.rowAccountId);
+      await links.write(
+        docKey,
+        { displayText, linkText },
+        linkModal.rowAccountId
+      );
       Toast.showToast({
         title: 'Incident Link Saved!',
         type: Toast.TYPE.NORMAL,
@@ -279,7 +289,13 @@ export default function OpenIncidents({ time, accounts }) {
       console.debug(err);
       Toast.showToast({ title: err.message, type: Toast.TYPE.CRITICAL });
     }
-  }, [displayText, linkText, linkModal.rowIncidentId, linkModal.rowAccountId, links]);
+  }, [
+    displayText,
+    linkText,
+    linkModal.rowIncidentId,
+    linkModal.rowAccountId,
+    links,
+  ]);
 
   const openCloseModal = useCallback((row) => {
     setCloseModal({

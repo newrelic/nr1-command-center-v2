@@ -36,7 +36,9 @@ function AnalyticsTable({ rows, column, direction, onSort, onOpenDrilldown }) {
         <Table.Body>
           {rows.map((row) => (
             <Table.Row key={row.id}>
-              <Table.Cell onClick={() => onOpenDrilldown(row)}><a>{row.account}</a></Table.Cell>
+              <Table.Cell onClick={() => onOpenDrilldown(row)}>
+                <a>{row.account}</a>
+              </Table.Cell>
               <Table.Cell>{row.id}</Table.Cell>
               <Table.Cell>{row.issueCount}</Table.Cell>
               <Table.Cell>{Math.round(row.issueMin)}</Table.Cell>

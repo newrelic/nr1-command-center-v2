@@ -212,12 +212,16 @@ export default function OpenIssues({ accounts }) {
       const idSet = new Set(sortedTable.map((r) => String(r.issueId)));
       for (const lnk of storedLinks) {
         if (!idSet.has(String(lnk.id))) {
-          linksStore.remove(lnk.id, lnk.accountId).catch((err) => console.debug(err));
+          linksStore
+            .remove(lnk.id, lnk.accountId)
+            .catch((err) => console.debug(err));
         }
       }
       for (const ack of storedAcks) {
         if (!idSet.has(String(ack.id))) {
-          acksStore.remove(ack.id, ack.accountId).catch((err) => console.debug(err));
+          acksStore
+            .remove(ack.id, ack.accountId)
+            .catch((err) => console.debug(err));
         }
       }
     } catch (err) {
@@ -288,7 +292,11 @@ export default function OpenIssues({ accounts }) {
   );
 
   const openLinkModal = useCallback((row) => {
-    setLinkModal({ hidden: false, rowIssueId: row.issueId, rowAccountId: row.accountId });
+    setLinkModal({
+      hidden: false,
+      rowIssueId: row.issueId,
+      rowAccountId: row.accountId,
+    });
   }, []);
 
   const closeLinkModal = useCallback(() => {
@@ -319,7 +327,11 @@ export default function OpenIssues({ accounts }) {
     );
     setLinkModal({ hidden: true, rowIssueId: null, rowAccountId: null });
     try {
-      await linksStore.write(docKey, { displayText, linkText }, linkModal.rowAccountId);
+      await linksStore.write(
+        docKey,
+        { displayText, linkText },
+        linkModal.rowAccountId
+      );
       Toast.showToast({ title: 'Issue Link Saved!', type: Toast.TYPE.NORMAL });
       setDisplayText('');
       setLinkText('');
@@ -327,7 +339,13 @@ export default function OpenIssues({ accounts }) {
       console.debug(err);
       Toast.showToast({ title: err.message, type: Toast.TYPE.CRITICAL });
     }
-  }, [displayText, linkText, linkModal.rowIssueId, linkModal.rowAccountId, linksStore]);
+  }, [
+    displayText,
+    linkText,
+    linkModal.rowIssueId,
+    linkModal.rowAccountId,
+    linksStore,
+  ]);
 
   const openAckModal = useCallback((row) => {
     setAckModal({

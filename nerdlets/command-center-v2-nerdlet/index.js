@@ -95,10 +95,7 @@ export default function CommandCenterV2NerdletNerdlet() {
         menuItem: 'Open Alert Events',
         render: () => (
           <Tab.Pane>
-            <OpenIncidents
-              time={since}
-              accounts={filteredAccounts}
-            />
+            <OpenIncidents time={since} accounts={filteredAccounts} />
           </Tab.Pane>
         ),
       },
@@ -106,10 +103,7 @@ export default function CommandCenterV2NerdletNerdlet() {
         menuItem: 'Analytics',
         render: () => (
           <Tab.Pane>
-            <Analytics
-              time={since}
-              accounts={filteredAccounts}
-            />
+            <Analytics time={since} accounts={filteredAccounts} />
           </Tab.Pane>
         ),
       },
