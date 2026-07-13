@@ -15,7 +15,7 @@ dayjs.extend(duration);
 import orderBy from 'lodash/orderBy';
 import csvDownload from 'json-to-csv-export';
 
-import config from './config.json';
+import { DEFAULT_REFRESH_RATE } from './constants';
 import IssuesTable from './components/IssuesTable';
 import LinkModal from './components/LinkModal';
 import ConfirmModal from './components/ConfirmModal';
@@ -100,7 +100,7 @@ function buildBaseUrl() {
     : 'https://radar-api.service.newrelic.com';
 }
 
-export default function OpenIssues({ accounts, nerdStoreAccount }) {
+export default function OpenIssues({ accounts }) {
   const [openLoading, setOpenLoading] = useState(true);
   const [tableData, setTableData] = useState([]);
   const [currentTime, setCurrentTime] = useState(null);
@@ -110,6 +110,7 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
   const [linkModal, setLinkModal] = useState({
     hidden: true,
     rowIssueId: null,
+    rowAccountId: null,
   });
   const [displayText, setDisplayText] = useState('');
   const [linkText, setLinkText] = useState('');
@@ -133,8 +134,8 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
   });
 
   const debouncedSearch = useDebouncedValue(searchText, 200);
-  const linksStore = useNerdStoreCollection(nerdStoreAccount, 'IssueLinks');
-  const acksStore = useNerdStoreCollection(nerdStoreAccount, 'IssueAcksV2');
+  const linksStore = useNerdStoreCollection('IssueLinks');
+  const acksStore = useNerdStoreCollection('IssueAcksV2');
   const { fetchUserName } = useCurrentUser();
 
   const baseUrl = useMemo(() => buildBaseUrl(), []);
@@ -151,9 +152,10 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
   const getTableData = useCallback(async () => {
     const currTime = dayjs().format('h:mm A');
     try {
+      const accountIds = accounts.map((a) => a.id);
       const [storedLinks, storedAcks, perAccount] = await Promise.all([
-        linksStore.load(),
-        acksStore.load(),
+        linksStore.load(accountIds),
+        acksStore.load(accountIds),
         Promise.all(accounts.map((acct) => fetchAllIssuesForAccount(acct))),
       ]);
 
@@ -210,12 +212,12 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
       const idSet = new Set(sortedTable.map((r) => String(r.issueId)));
       for (const lnk of storedLinks) {
         if (!idSet.has(String(lnk.id))) {
-          linksStore.remove(lnk.id).catch((err) => console.debug(err));
+          linksStore.remove(lnk.id, lnk.accountId).catch((err) => console.debug(err));
         }
       }
       for (const ack of storedAcks) {
         if (!idSet.has(String(ack.id))) {
-          acksStore.remove(ack.id).catch((err) => console.debug(err));
+          acksStore.remove(ack.id, ack.accountId).catch((err) => console.debug(err));
         }
       }
     } catch (err) {
@@ -231,7 +233,7 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
     // eslint-disable-next-line
   }, [accountSignature]);
 
-  useInterval(getTableData, config.refreshRate);
+  useInterval(getTableData, DEFAULT_REFRESH_RATE);
 
   const handleSort = useCallback((clickedCol) => {
     setSort((prev) => ({
@@ -286,11 +288,11 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
   );
 
   const openLinkModal = useCallback((row) => {
-    setLinkModal({ hidden: false, rowIssueId: row.issueId });
+    setLinkModal({ hidden: false, rowIssueId: row.issueId, rowAccountId: row.accountId });
   }, []);
 
   const closeLinkModal = useCallback(() => {
-    setLinkModal({ hidden: true, rowIssueId: null });
+    setLinkModal({ hidden: true, rowIssueId: null, rowAccountId: null });
     setDisplayText('');
     setLinkText('');
   }, []);
@@ -315,9 +317,9 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
           : row
       )
     );
-    setLinkModal({ hidden: true, rowIssueId: null });
+    setLinkModal({ hidden: true, rowIssueId: null, rowAccountId: null });
     try {
-      await linksStore.write(docKey, { displayText, linkText });
+      await linksStore.write(docKey, { displayText, linkText }, linkModal.rowAccountId);
       Toast.showToast({ title: 'Issue Link Saved!', type: Toast.TYPE.NORMAL });
       setDisplayText('');
       setLinkText('');
@@ -325,7 +327,7 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
       console.debug(err);
       Toast.showToast({ title: err.message, type: Toast.TYPE.CRITICAL });
     }
-  }, [displayText, linkText, linkModal.rowIssueId, linksStore]);
+  }, [displayText, linkText, linkModal.rowIssueId, linkModal.rowAccountId, linksStore]);
 
   const openAckModal = useCallback((row) => {
     setAckModal({
@@ -370,16 +372,31 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
 
     try {
       const res = await NerdGraphMutation.mutate({ mutation });
+
       if (res.error) {
         console.debug(
           `Failed to ack issue: ${issueToAck} within account: ${rowAccountId}`
         );
+        console.debug(res.error);
         Toast.showToast({
           title: 'Failed to ack issue.',
           type: Toast.TYPE.CRITICAL,
         });
         return;
       }
+
+      if (res.data?.aiIssuesAckIssue?.error) {
+        console.debug(
+          `Failed to ack issue: ${issueToAck} within account: ${rowAccountId}`
+        );
+        console.debug(res.data.aiIssuesAckIssue.error);
+        Toast.showToast({
+          title: 'Failed to ack issue.',
+          type: Toast.TYPE.CRITICAL,
+        });
+        return;
+      }
+
       setTableData((prev) =>
         prev.map((row) =>
           row.issueId === issueToAck ? { ...row, ackUser: userName } : row
@@ -387,7 +404,7 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
       );
       setAckModal({ hidden: true, issueToAck: null, rowAccountId: null });
       try {
-        await acksStore.write(issueToAck, { user: userName });
+        await acksStore.write(issueToAck, { user: userName }, rowAccountId);
         Toast.showToast({
           title: 'Issue acknowledged!',
           type: Toast.TYPE.NORMAL,
@@ -433,20 +450,38 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
       `;
     try {
       const res = await NerdGraphMutation.mutate({ mutation });
+
       if (res.error) {
         console.debug(
           `Failed to close issue: ${issueToClose} within account: ${rowAccountId}`
         );
+        console.debug(res.error);
         Toast.showToast({
           title: 'Failed to close issue.',
           type: Toast.TYPE.CRITICAL,
         });
         return;
       }
+
+      if (res.data?.aiIssuesResolveIssue?.error) {
+        console.debug(
+          `Failed to close issue: ${issueToClose} within account: ${rowAccountId}`
+        );
+        console.debug(res.data.aiIssuesResolveIssue.error);
+        Toast.showToast({
+          title: 'Failed to close issue.',
+          type: Toast.TYPE.CRITICAL,
+        });
+        return;
+      }
+
       setTableData((prev) =>
         prev.filter((row) => row.issueId !== issueToClose)
       );
       setCloseModal({ hidden: true, issueToClose: null, rowAccountId: null });
+      const docKey = String(issueToClose);
+      linksStore.remove(docKey, rowAccountId).catch(console.debug);
+      acksStore.remove(docKey, rowAccountId).catch(console.debug);
       Toast.showToast({ title: 'Issue closed!', type: Toast.TYPE.NORMAL });
     } catch (err) {
       console.debug(err);
@@ -455,7 +490,7 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
         type: Toast.TYPE.CRITICAL,
       });
     }
-  }, [closeModal]);
+  }, [closeModal, linksStore, acksStore]);
 
   const openEntitiesModal = useCallback(async (entityIds) => {
     const ids = entityIds || [];
@@ -577,6 +612,4 @@ export default function OpenIssues({ accounts, nerdStoreAccount }) {
 
 OpenIssues.propTypes = {
   accounts: PropTypes.array.isRequired,
-  nerdStoreAccount: PropTypes.oneOfType([PropTypes.string, PropTypes.number])
-    .isRequired,
 };

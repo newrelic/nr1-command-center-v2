@@ -15,7 +15,7 @@ dayjs.extend(duration);
 import orderBy from 'lodash/orderBy';
 import csvDownload from 'json-to-csv-export';
 
-import config from './config.json';
+import { DEFAULT_REFRESH_RATE } from './constants';
 import IncidentsTable from './components/IncidentsTable';
 import LinkModal from './components/LinkModal';
 import ConfirmModal from './components/ConfirmModal';
@@ -104,7 +104,7 @@ function validateLinkInput(displayText, linkText) {
   return null;
 }
 
-export default function OpenIncidents({ time, accounts, nerdStoreAccount }) {
+export default function OpenIncidents({ time, accounts }) {
   const [openLoading, setOpenLoading] = useState(true);
   const [tableData, setTableData] = useState([]);
   const [currentTime, setCurrentTime] = useState(null);
@@ -114,6 +114,7 @@ export default function OpenIncidents({ time, accounts, nerdStoreAccount }) {
   const [linkModal, setLinkModal] = useState({
     hidden: true,
     rowIncidentId: null,
+    rowAccountId: null,
   });
   const [displayText, setDisplayText] = useState('');
   const [linkText, setLinkText] = useState('');
@@ -125,7 +126,7 @@ export default function OpenIncidents({ time, accounts, nerdStoreAccount }) {
   });
 
   const debouncedSearch = useDebouncedValue(searchText, 200);
-  const links = useNerdStoreCollection(nerdStoreAccount, 'IncidentLinksV2');
+  const links = useNerdStoreCollection('IncidentLinksV2');
 
   const accountSignature = useMemo(
     () =>
@@ -139,7 +140,7 @@ export default function OpenIncidents({ time, accounts, nerdStoreAccount }) {
   const getTableData = useCallback(async () => {
     const currTime = dayjs().format('h:mm A');
     try {
-      const storedLinks = await links.load();
+      const storedLinks = await links.load(accounts.map((a) => a.id));
       const idsByAccount = await Promise.all(
         accounts.map((acct) => fetchViolationIds(acct, time))
       );
@@ -172,7 +173,7 @@ export default function OpenIncidents({ time, accounts, nerdStoreAccount }) {
       const idSet = new Set(formattedTable.map((r) => String(r.incidentId)));
       for (const lnk of storedLinks) {
         if (!idSet.has(String(lnk.id))) {
-          links.remove(lnk.id).catch((err) => console.debug(err));
+          links.remove(lnk.id, lnk.accountId).catch((err) => console.debug(err));
         }
       }
     } catch (err) {
@@ -188,7 +189,7 @@ export default function OpenIncidents({ time, accounts, nerdStoreAccount }) {
     // eslint-disable-next-line
   }, [time, accountSignature]);
 
-  useInterval(getTableData, config.refreshRate);
+  useInterval(getTableData, DEFAULT_REFRESH_RATE);
 
   const handleSort = useCallback((clickedCol) => {
     setSort((prev) => ({
@@ -236,11 +237,11 @@ export default function OpenIncidents({ time, accounts, nerdStoreAccount }) {
   );
 
   const openLinkModal = useCallback((row) => {
-    setLinkModal({ hidden: false, rowIncidentId: row.incidentId });
+    setLinkModal({ hidden: false, rowIncidentId: row.incidentId, rowAccountId: row['account.id'] });
   }, []);
 
   const closeLinkModal = useCallback(() => {
-    setLinkModal({ hidden: true, rowIncidentId: null });
+    setLinkModal({ hidden: true, rowIncidentId: null, rowAccountId: null });
     setDisplayText('');
     setLinkText('');
   }, []);
@@ -265,9 +266,9 @@ export default function OpenIncidents({ time, accounts, nerdStoreAccount }) {
           : row
       )
     );
-    setLinkModal({ hidden: true, rowIncidentId: null });
+    setLinkModal({ hidden: true, rowIncidentId: null, rowAccountId: null });
     try {
-      await links.write(docKey, { displayText, linkText });
+      await links.write(docKey, { displayText, linkText }, linkModal.rowAccountId);
       Toast.showToast({
         title: 'Incident Link Saved!',
         type: Toast.TYPE.NORMAL,
@@ -278,7 +279,7 @@ export default function OpenIncidents({ time, accounts, nerdStoreAccount }) {
       console.debug(err);
       Toast.showToast({ title: err.message, type: Toast.TYPE.CRITICAL });
     }
-  }, [displayText, linkText, linkModal.rowIncidentId, links]);
+  }, [displayText, linkText, linkModal.rowIncidentId, linkModal.rowAccountId, links]);
 
   const openCloseModal = useCallback((row) => {
     setCloseModal({
@@ -309,6 +310,7 @@ export default function OpenIncidents({ time, accounts, nerdStoreAccount }) {
         console.debug(
           `Failed to close incident: ${incToClose} within account: ${rowAccountId}`
         );
+        console.debug(res.error ?? res.data?.aiIssuesCloseIncident?.error);
         Toast.showToast({
           title: 'Failed to close incident.',
           type: Toast.TYPE.CRITICAL,
@@ -319,6 +321,7 @@ export default function OpenIncidents({ time, accounts, nerdStoreAccount }) {
         prev.filter((row) => row.incidentId !== incToClose)
       );
       setCloseModal({ hidden: true, incToClose: null, rowAccountId: null });
+      links.remove(String(incToClose), rowAccountId).catch(console.debug);
       Toast.showToast({ title: 'Incident closed!', type: Toast.TYPE.NORMAL });
     } catch (err) {
       console.debug(err);
@@ -327,7 +330,7 @@ export default function OpenIncidents({ time, accounts, nerdStoreAccount }) {
         type: Toast.TYPE.CRITICAL,
       });
     }
-  }, [closeModal]);
+  }, [closeModal, links]);
 
   const openMutingRule = useCallback((mutingRuleName, accountId) => {
     navigation.openStackedNerdlet({
@@ -408,6 +411,4 @@ export default function OpenIncidents({ time, accounts, nerdStoreAccount }) {
 OpenIncidents.propTypes = {
   time: PropTypes.string.isRequired,
   accounts: PropTypes.array.isRequired,
-  nerdStoreAccount: PropTypes.oneOfType([PropTypes.string, PropTypes.number])
-    .isRequired,
 };

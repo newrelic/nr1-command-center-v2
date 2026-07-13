@@ -7,8 +7,11 @@ tmp*
 .DS_Store
 old*
 
-
+# Claude
 .codegraph
 CLAUDE.md
 .claude
 doctor.config.json
+
+# vscode
+.vscode

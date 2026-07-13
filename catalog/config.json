@@ -1,0 +1,19 @@
+{
+  "tagline": "Incident Command Center",
+  "repository": "https://github.com/newrelic-experimental/nr1-command-center-v2.git",
+  "details": "Consolidated view of alert events, issues and AQM analytics across many accounts",
+  "categoryTerms": [],
+  "keywords": ["incidents", "ops", "alerts"],
+  "support": {
+    "issues": {
+      "url": "https://github.com/newrelic-experimental/nr1-command-center-v2/issues"
+    },
+    "email": {
+      "address": "opensource+nr-command-center-v2@newrelic.com"
+    },
+    "community": {
+      "url": "https://github.com/newrelic-experimental/nr1-command-center-v2/issues"
+    }
+  },
+  "whatsNew": "Initial Command Center release"
+}

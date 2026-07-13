@@ -1,18 +1,27 @@
 import { useCallback, useMemo } from 'react';
 import { AccountStorageMutation, AccountStorageQuery } from 'nr1';
 
-export default function useNerdStoreCollection(accountId, collection) {
-  const load = useCallback(async () => {
-    const res = await AccountStorageQuery.query({
-      accountId,
-      collection,
-      fetchPolicyType: AccountStorageQuery.FETCH_POLICY_TYPE.NETWORK_ONLY,
-    });
-    return res?.data || [];
-  }, [accountId, collection]);
+export default function useNerdStoreCollection(collection) {
+  const load = useCallback(
+    async (accountIds) => {
+      const results = await Promise.all(
+        accountIds.map((accountId) =>
+          AccountStorageQuery.query({
+            accountId,
+            collection,
+            fetchPolicyType: AccountStorageQuery.FETCH_POLICY_TYPE.NETWORK_ONLY,
+          }).then((res) =>
+            (res?.data || []).map((doc) => ({ ...doc, accountId }))
+          )
+        )
+      );
+      return results.flat();
+    },
+    [collection]
+  );
 
   const write = useCallback(
-    (documentId, document) =>
+    (documentId, document, accountId) =>
       AccountStorageMutation.mutate({
         accountId,
         actionType: AccountStorageMutation.ACTION_TYPE.WRITE_DOCUMENT,
@@ -20,18 +29,18 @@ export default function useNerdStoreCollection(accountId, collection) {
         documentId,
         document,
       }),
-    [accountId, collection]
+    [collection]
   );
 
   const remove = useCallback(
-    (documentId) =>
+    (documentId, accountId) =>
       AccountStorageMutation.mutate({
         accountId,
         actionType: AccountStorageMutation.ACTION_TYPE.DELETE_DOCUMENT,
         collection,
         documentId,
       }),
-    [accountId, collection]
+    [collection]
   );
 
   return useMemo(() => ({ load, write, remove }), [load, write, remove]);
