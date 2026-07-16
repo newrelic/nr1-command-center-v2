@@ -32,5 +32,5 @@ jobs:
         uses: newrelic/repolinter-action@v1
         with:
           # FIXME: Replace with the appropriate ruleset URL
-          config_url: https://raw.githubusercontent.com/newrelic/.github/main/repolinter-rulesets/new-relic-experimental.yml
+          config_url: https://raw.githubusercontent.com/newrelic/.github/main/repolinter-rulesets/new-relic-one-catalog-project.json
           output_type: issue

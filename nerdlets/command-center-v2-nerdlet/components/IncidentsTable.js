@@ -6,6 +6,7 @@ import dayjs from 'dayjs';
 
 import { BADGE_TYPES } from '../constants';
 
+// column widths shift when muting rule column is present
 const WIDTHS_MUTED = {
   ID: '4%',
   Account: '7%',

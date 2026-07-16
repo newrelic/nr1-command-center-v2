@@ -15,6 +15,7 @@ import Analytics from './analytics';
 import AccountFilterDropdown from './components/AccountFilterDropdown';
 import useAccounts from './hooks/useAccounts';
 
+// duration-based ranges need an end anchor; absolute ranges use their own bounds
 function deriveTimeRange(platformUrlState) {
   if (!platformUrlState?.timeRange) return { since: '', rawTime: null };
   const tr = platformUrlState.timeRange;
@@ -41,7 +42,7 @@ export default function CommandCenterV2NerdletNerdlet() {
 
   useEffect(() => {
     nerdlet.setConfig({
-      timePickerDefaultOffset: 1000 * 60 * 60 * 24,
+      timePickerDefaultOffset: 1000 * 60 * 60 * 24, // 24-hour default offset
     });
   }, []);
 

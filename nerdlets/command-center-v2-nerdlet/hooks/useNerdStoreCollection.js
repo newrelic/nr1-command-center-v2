@@ -11,6 +11,7 @@ export default function useNerdStoreCollection(collection) {
             collection,
             fetchPolicyType: AccountStorageQuery.FETCH_POLICY_TYPE.NETWORK_ONLY,
           }).then((res) =>
+            // inject accountId so documents remain traceable after flattening
             (res?.data || []).map((doc) => ({ ...doc, accountId }))
           )
         )
