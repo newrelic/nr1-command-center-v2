@@ -1,6 +1,6 @@
 [![New Relic One Catalog Project header](https://github.com/newrelic/opensource-website/raw/master/src/images/categories/New_Relic_One_Catalog_Project.png)](https://opensource.newrelic.com/oss-category/#new-relic-one-catalog-project)
 
-[![Snyk](https://snyk.io/test/github/newrelic-experimental/nr1-command-center/badge.svg)](https://snyk.io/test/github/newrelic-experimental/nr1-command-center)
+[![Snyk](https://snyk.io/test/github/newrelic/nr1-command-center/badge.svg)](https://snyk.io/test/github/newrelic/nr1-command-center)
 
 # Incident Command Center (nr1-command-center-v2)
 
@@ -11,8 +11,8 @@ This application aggregates alert events and issues across many accounts to prov
 ## Features
 - Per account snapshot of alert event/issue counts
 - Holistic, filterable/exportable view of open alert events and issues across many accounts
-- Auto refresh (60 seconds) open alert events and issues
-- Persistent links to correlate with individual alert events and issues
+- Auto refresh (60 seconds) of open alert events and issues tabs
+- Persistent links to external tickets or runbooks for individual alert events and issues
 - Acknowledge and close issues/alert events directly in list view
 - Analytics for total issue count, accumulated issue minutes, MTTR, and % of issues closed under 5 minutes - across all accounts
 - Drilldown into `Alert Quality Management` dashboard if it exists in a given account. To install in a given account, follow [these docs](https://newrelic.com/instant-observability/alert-quality-management)
@@ -27,20 +27,21 @@ This application aggregates alert events and issues across many accounts to prov
 
 ## Dependencies
 
-[New Relic Alerts](https://docs.newrelic.com/docs/alerts/overview/) configured
+* [New Relic Alerts](https://docs.newrelic.com/docs/alerts/overview/) configured
+* [AQM dashboard](https://newrelic.com/instant-observability/alert-quality-management) deployed to desired accounts (**optional**)
 
 ## Enabling this App
 
 This app is available via the New Relic Catalog.
 
 To enable it in your account:
-1. Go to `Integrations & Agents > Apps and Visualizations` and search for "Alert Quality Management"
-2. Click the `Alert Quality Management` card, and then click the `Add this App` button to add it to your account(s)
+1. Go to `Integrations & Agents > Apps and Visualizations` and search for "Command Center"
+2. Click the `Incident Command Center` card, and then click the `Add this App` button to add it to your account(s)
 3. Click `Open App` to launch the app (note: on the first time accessing the app, you may be prompted to enable it)
 
 Once you have added your accounts, you can also open the app by:
 1. Open the `Apps` left-hand navigation menu item (you may need to click on the `Add More` ellipsis if it doesn't show up by default)
-2. In the `Your Apps` section, locate and click on the `Alert Quality Management` card to open the app
+2. In the `Your Apps` section, locate and click on the `Incident Command Center` card to open the app
 
 
 #### Manual Deployment

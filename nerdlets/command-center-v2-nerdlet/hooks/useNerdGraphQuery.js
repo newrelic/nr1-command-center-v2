@@ -9,8 +9,8 @@ export default function useNerdGraphQuery(
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(!skip);
-  const isMountedRef = useRef(true);
-  const buildArgsRef = useRef(buildArgs);
+  const isMountedRef = useRef(true); // guards against setState after unmount
+  const buildArgsRef = useRef(buildArgs); // ref avoids re-creating the effect when buildArgs identity changes
 
   useEffect(() => {
     buildArgsRef.current = buildArgs;

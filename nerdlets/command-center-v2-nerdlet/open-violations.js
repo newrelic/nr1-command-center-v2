@@ -141,6 +141,7 @@ export default function OpenIncidents({ time, accounts }) {
     const currTime = dayjs().format('h:mm A');
     try {
       const storedLinks = await links.load(accounts.map((a) => a.id));
+      // NRQL uniqueCount detects open IDs; full records require a second pass
       const idsByAccount = await Promise.all(
         accounts.map((acct) => fetchViolationIds(acct, time))
       );
@@ -428,3 +429,5 @@ OpenIncidents.propTypes = {
   time: PropTypes.string.isRequired,
   accounts: PropTypes.array.isRequired,
 };
+
+export { buildExportable, validateLinkInput };

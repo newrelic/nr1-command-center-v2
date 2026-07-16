@@ -49,6 +49,7 @@ function countPriorities(issues) {
 }
 
 async function fetchIssueCountsForAccount(acct) {
+  // NerdGraph paginates via cursor; recurse until exhausted
   let cursor = null;
   let collected = [];
   do {
@@ -119,10 +120,10 @@ export default function Splash({ accounts }) {
 
   const handleCardClick = useCallback((e) => {
     const here = window.location.href;
-    const base = here.includes('one.eu')
+    const base = here.includes('one.eu') // EU accounts use a different base domain
       ? 'https://one.eu.newrelic.com'
       : 'https://one.newrelic.com';
-    const url = `${base}/alerts-ai?account=${e.currentTarget.id}&duration=86400000`;
+    const url = `${base}/alerts-ai?account=${e.currentTarget.id}&duration=86400000`; // 24 h in ms
     window.open(url, '_blank');
   }, []);
 
@@ -211,3 +212,5 @@ export default function Splash({ accounts }) {
 Splash.propTypes = {
   accounts: PropTypes.array.isRequired,
 };
+
+export { getCardColor, getIcon, countPriorities };

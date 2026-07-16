@@ -6,7 +6,7 @@ const query = require('../utils');
 export default function useCurrentUser() {
   const [user, setUser] = useState(null);
   const [error, setError] = useState(null);
-  const cacheRef = useRef(new Map());
+  const cacheRef = useRef(new Map()); // Map persists across renders without triggering re-renders
 
   useEffect(() => {
     let active = true;

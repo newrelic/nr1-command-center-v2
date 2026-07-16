@@ -4,7 +4,7 @@ Incident Command Center
 
 ## Open Source License
 
-This project is distributed under the [Apache 2 license](https://github.com/newrelic-experimental/nr1-command-center-v2/blob/main/LICENSE).
+This project is distributed under the [Apache 2 license](https://github.com/newrelic/nr1-command-center-v2/blob/main/LICENSE).
 
 ## Community Support
 
@@ -16,4 +16,4 @@ Please do not report issues with AQM to New Relic Global Technical Support. Inst
 
 ## Issues / Enhancement Requests
 
-Issues and enhancement requests can be submitted in the [Issues tab of this repository](https://github.com/newrelic-experimental/nr1-command-center-v2/issues). Please search for and review the existing open issues before submitting a new issue.
+Issues and enhancement requests can be submitted in the [Issues tab of this repository](https://github.com/newrelic/nr1-command-center-v2/issues). Please search for and review the existing open issues before submitting a new issue.

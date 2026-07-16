@@ -8,7 +8,7 @@ In the event that a required notice is missing or incorrect, please notify us
 by e-mailing [open-source@newrelic.com](mailto:open-source@newrelic.com).
 
 For any licenses that require the disclosure of source
-code, the source code can be found at [https://github.com/newrelic-experimental/nr1-command-center-v2](https://github.com/newrelic-experimental/nr1-command-center-v2).
+code, the source code can be found at [https://github.com/newrelic/nr1-command-center-v2](https://github.com/newrelic/nr1-command-center-v2).
 
 ## Content
 

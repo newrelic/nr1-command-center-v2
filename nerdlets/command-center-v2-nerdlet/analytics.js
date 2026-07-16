@@ -250,3 +250,5 @@ Analytics.propTypes = {
   time: PropTypes.string.isRequired,
   accounts: PropTypes.array.isRequired,
 };
+
+export { getTooltip, computeAggregate };

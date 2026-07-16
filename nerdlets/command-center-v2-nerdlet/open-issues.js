@@ -514,6 +514,7 @@ export default function OpenIssues({ accounts }) {
     const ids = entityIds || [];
     setEntityModal({ hidden: false, loading: true, entities: [] });
 
+    // NerdGraph enforces a 25-GUID limit per entitySearch call
     const chunks = [];
     for (let i = 0; i < ids.length; i += 25) {
       chunks.push(ids.slice(i, i + 25));
@@ -631,3 +632,5 @@ export default function OpenIssues({ accounts }) {
 OpenIssues.propTypes = {
   accounts: PropTypes.array.isRequired,
 };
+
+export { applyTagsToIssue, validateLinkInput, buildBaseUrl };

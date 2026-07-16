@@ -36,7 +36,7 @@ function getWidth(header) {
 }
 
 function getInitials(user) {
-  const parts = user.match(/\b\w/g) || [];
+  const parts = user.match(/\b\w/g) || []; // \b\w matches word boundaries; first + last gives two-initial monogram
   return ((parts.shift() || '') + (parts.pop() || '')).toUpperCase();
 }
 
