@@ -69,26 +69,25 @@ describe('validateLinkInput', () => {
 });
 
 describe('buildBaseUrl', () => {
-  afterEach(() => {
+  beforeAll(() => {
     Object.defineProperty(window, 'location', {
       value: { href: 'about:blank' },
+      writable: true,
       configurable: true,
     });
   });
 
+  afterEach(() => {
+    window.location.href = 'about:blank';
+  });
+
   test('returns EU endpoint when URL contains "one.eu"', () => {
-    Object.defineProperty(window, 'location', {
-      value: { href: 'https://one.eu.newrelic.com/nerdpacks' },
-      configurable: true,
-    });
+    window.location.href = 'https://one.eu.newrelic.com/nerdpacks';
     expect(buildBaseUrl()).toBe('https://radar-api.service.eu.newrelic.com');
   });
 
   test('returns US endpoint for non-EU URL', () => {
-    Object.defineProperty(window, 'location', {
-      value: { href: 'https://one.newrelic.com/nerdpacks' },
-      configurable: true,
-    });
+    window.location.href = 'https://one.newrelic.com/nerdpacks';
     expect(buildBaseUrl()).toBe('https://radar-api.service.newrelic.com');
   });
 });
