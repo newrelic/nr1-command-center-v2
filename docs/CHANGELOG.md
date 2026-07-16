@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/newrelic/nr1-command-center-v2/compare/v1.0.0...v1.0.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* units tests;docs updates ([e2562c5](https://github.com/newrelic/nr1-command-center-v2/commit/e2562c51c14f5352d8d4c9aec22ffa205aefac76))
+
 # 1.0.0 (2026-07-13)
 
 
