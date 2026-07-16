@@ -2,12 +2,8 @@ import { getCardColor, getIcon, countPriorities } from '../splash';
 
 describe('getCardColor', () => {
   test('returns "red" when critical count is 1 or more', () => {
-    expect(getCardColor({ critical: 1, high: 0, anomalyCount: 0 })).toBe(
-      'red'
-    );
-    expect(getCardColor({ critical: 3, high: 2, anomalyCount: 0 })).toBe(
-      'red'
-    );
+    expect(getCardColor({ critical: 1, high: 0, anomalyCount: 0 })).toBe('red');
+    expect(getCardColor({ critical: 3, high: 2, anomalyCount: 0 })).toBe('red');
   });
 
   test('returns "orange" when high > 0 and critical === 0', () => {
@@ -84,6 +80,10 @@ describe('countPriorities', () => {
 
   test('ignores issues without matching priority tags', () => {
     const issue = { tags: [{ key: 'someOtherTag', values: ['val'] }] };
-    expect(countPriorities([issue])).toEqual({ critical: 0, high: 0, muted: 0 });
+    expect(countPriorities([issue])).toEqual({
+      critical: 0,
+      high: 0,
+      muted: 0,
+    });
   });
 });
